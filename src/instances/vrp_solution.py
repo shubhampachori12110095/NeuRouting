@@ -100,3 +100,41 @@ class VRPSolution:
         for route in self.routes:
             if customer_idx in route:
                 return route
+
+    def destroy_nodes(self, to_remove: List[int]):
+        incomplete_routes = []
+        complete_routes = []
+        removed = []
+        for route in self.routes:
+            last_split_idx = 0
+            for i in range(1, len(route) - 1):
+                if route[i] in to_remove:
+                    # Create two new tours:
+                    # The first consisting of the tour from the depot or from the last removed customer to the
+                    # customer that should be removed
+                    if i > last_split_idx and i > 1:
+                        new_tour_pre = route[last_split_idx:i]
+                        # complete_routes.append(new_tour_pre)
+                        incomplete_routes.append(new_tour_pre)
+                    # The second consisting of only the customer to be removed
+                    customer_idx = route[i]
+                    # make sure the customer has not already been extracted from a different tour
+                    if customer_idx not in removed:
+                        new_tour = [customer_idx]
+                        incomplete_routes.append(new_tour)
+                        removed.append(customer_idx)
+                    last_split_idx = i + 1
+            if last_split_idx > 0:
+                # Create another new tour consisting of the remaining part of the original tour
+                if last_split_idx < len(route) - 1:
+                    new_tour_post = route[last_split_idx:]
+                    incomplete_routes.append(new_tour_post)
+            else:  # add unchanged tour
+                complete_routes.append(route)
+        complete_routes = [Route(cr, self.instance) for cr in complete_routes]
+        incomplete_routes = [Route(ir, self.instance) for ir in incomplete_routes]
+        self.routes = complete_routes + incomplete_routes
+
+    def __deepcopy__(self, memo):
+        routes_copy = [Route(route[:], self.instance) for route in self.routes]
+        return VRPSolution(self.instance, routes_copy)
