@@ -1,6 +1,5 @@
 import os
 import tempfile
-import time
 from subprocess import check_output
 
 import matplotlib.pyplot as plt
@@ -50,7 +49,7 @@ class LKHSolver:
 
 if __name__ == "__main__":
     inst = generate_instance(50)
-    lkhsolver = LKHSolver(inst)
+    lkhsolver = LKHSolver(inst, "../../executables/LKH")
     sol = lkhsolver.solve()
     inst.plot(sol)
     plt.show()

@@ -1,0 +1,1 @@
+from .vrp_neural_solution import VRPNeuralSolution

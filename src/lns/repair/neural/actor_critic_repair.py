@@ -10,24 +10,25 @@ import numpy as np
 import torch.nn.functional as F
 from torch import optim
 
-from instances import generate_multiple_instances
-from lns.destroy.destroy_operators import DestroyProcedure
-from lns.initial.nearest_neighbor import nearest_neighbor_solution
-from lns.lns_batch_search import lns_batch_search, LNSOperatorPair
-from lns.repair.vrp_neural_solution import VRPNeuralSolution
-from lns.repair.repair_operators import NeuralRepairProcedure
+from environments.lns_environment import BatchLNSEnvironment
+from instances import generate_multiple_instances, VRPSolution
+from lns import LNSOperatorPair
+from lns.destroy import DestroyProcedure
+from lns.initial import nearest_neighbor_solution
+from lns.repair.utils import VRPNeuralSolution
+from lns.repair import NeuralRepairProcedure
 
 
 class ActorCriticRepair(NeuralRepairProcedure):
 
     def __init__(self, actor: nn.Module, critic: nn.Module = None, device: str = 'cpu'):
         self.actor = actor.to(device)
-        self.critic = critic.to(device)
+        self.critic = critic.to(device) if critic is not None else critic
         self.device = device
 
-    def __call__(self, partial_solution: VRPNeuralSolution):
+    def __call__(self, partial_solution: VRPSolution) -> VRPSolution:
         with torch.no_grad():
-            self.multiple([partial_solution])
+            return self.multiple([partial_solution])[0]
 
     def _actor_model_forward(self,
                              incomplete_solutions: List[VRPNeuralSolution],
@@ -119,12 +120,11 @@ class ActorCriticRepair(NeuralRepairProcedure):
         train_size = round(n_samples * (1 - val_split))
         val_size = n_samples - train_size
         # Create training and validation set. The initial solutions are created greedily
-        training_set = [VRPNeuralSolution(nearest_neighbor_solution(inst))
+        training_set = [nearest_neighbor_solution(inst)
                         for inst in generate_multiple_instances(n_instances=train_size, n_customers=30)]
         print(f"{len(training_set)} samples generated.")
         print("Generating validation data...")
-        validation_set = [VRPNeuralSolution(nearest_neighbor_solution(inst))
-                          for inst in generate_multiple_instances(n_instances=val_size, n_customers=30)]
+        validation_set = [inst for inst in generate_multiple_instances(n_instances=val_size, n_customers=30)]
         print(f"{len(validation_set)} samples generated.")
         actor_optim = optim.Adam(self.actor.parameters(), lr=1e-4)
         self.actor.train()
@@ -133,6 +133,8 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
         losses_actor, rewards, diversity_values, losses_critic = [], [], [], []
         incumbent_costs = np.inf
+
+        eval_env = BatchLNSEnvironment(batch_size, [LNSOperatorPair(destroy_procedure, self)])
 
         start_time = time.time()
 
@@ -143,12 +145,11 @@ class ActorCriticRepair(NeuralRepairProcedure):
             end = min((batch_idx + 1) * batch_size, train_size)
             print(f"From {begin} to {end}")
             tr_solutions = [deepcopy(sol) for sol in training_set[begin:end]]
-
             print(f"Batch {batch_idx}: {len(tr_solutions)} samples")
 
             destroy_procedure.multiple(tr_solutions)
             costs_destroyed = [solution.cost() for solution in tr_solutions]
-            tour_indices, tour_logp, critic_est = self.multiple(tr_solutions)
+            _, tour_logp, critic_est = self._forward(tr_solutions)
             costs_repaired = [solution.cost() for solution in tr_solutions]
 
             # Reward/Advantage computation
@@ -192,35 +193,33 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
             # Evaluate and save model every bunch of batches
             if (batch_idx + 1) % eval_interval == 0 or batch_idx == n_batches - 1:
-                val_solutions = [deepcopy(instance) for instance in validation_set]
+                val_instances = [deepcopy(instance) for instance in validation_set]
                 self.actor.eval()
-                operation = LNSOperatorPair(destroy_procedure, self)
-                costs = lns_batch_search(val_solutions, [operation],
-                                         batch_size=batch_size, max_iterations=100, timelimit=10)
+                solutions = eval_env.solve(val_instances, time_limit=10)
                 self.actor.train()
-                mean_costs = np.mean(costs)
+                mean_costs = np.mean([sol.cost() for sol in solutions])
 
                 if mean_costs < incumbent_costs:
                     incumbent_costs = mean_costs
                     incumbent_model_path = "../../pretrained/model.pt"
                     model_data = {
-                        'parameters': self.actor.state_dict(),
-                        'model_name': "VrpActorModel"
+                        'model_name': "VrpActorModel",
+                        'parameters': self.actor.state_dict()
                     }
-                    # torch.save(model_data, incumbent_model_path)
+                    torch.save(model_data, incumbent_model_path)
 
                 runtime = (time.time() - start_time)
-                print(
-                    f"Validation (Batch {batch_idx}) Costs: {mean_costs:.3f} ({incumbent_costs:.3f}) Runtime: {runtime}")
+                print(f"Validation (Batch {batch_idx}) Costs: {mean_costs:.3f} ({incumbent_costs:.3f}) Runtime: {runtime}")
 
-    def multiple(self, partial_solutions: List[VRPNeuralSolution]):
-        emb_size = max([solution.min_nn_repr_size() for solution in partial_solutions])  # Max. input points of envs
-        batch_size = len(partial_solutions)
+    def _forward(self, partial_solutions: List[VRPSolution]):
+        neural_solutions = [VRPNeuralSolution(solution) for solution in partial_solutions]
+        emb_size = max([solution.min_nn_repr_size() for solution in neural_solutions])  # Max. input points of envs
+        batch_size = len(neural_solutions)
 
         # Create envs input
         static_input = np.zeros((batch_size, emb_size, 2))
         dynamic_input = np.zeros((batch_size, emb_size, 2), dtype='int')
-        for i, solution in enumerate(partial_solutions):
+        for i, solution in enumerate(neural_solutions):
             static_nn_input, dynamic_nn_input = solution.network_representation(emb_size)
             static_input[i] = static_nn_input
             dynamic_input[i] = dynamic_nn_input
@@ -234,9 +233,12 @@ class ActorCriticRepair(NeuralRepairProcedure):
         if self.critic is not None:
             cost_estimate = self._critic_model_forward(static_input, dynamic_input, capacity)
 
-        tour_idx, tour_logp = self._actor_model_forward(partial_solutions, static_input, dynamic_input, capacity)
-
+        tour_idx, tour_logp = self._actor_model_forward(neural_solutions, static_input, dynamic_input, capacity)
         return tour_idx, tour_logp, cost_estimate
+
+    def multiple(self, partial_solutions: List[VRPSolution]) -> List[VRPSolution]:
+        self._forward(partial_solutions)
+        return partial_solutions
 
     @staticmethod
     def _get_mask(origin_nn_input_idx, dynamic_input, solutions: List[VRPNeuralSolution], capacity: int):
@@ -272,3 +274,8 @@ class ActorCriticRepair(NeuralRepairProcedure):
         mask[:, 0] = 1  # Always allow to go to the depot
 
         return mask
+
+    def load_actor_weights(self, path: str):
+        model = torch.load(path, self.device)
+        self.actor.load_state_dict(model['parameters'])
+        self.actor.eval()

@@ -5,9 +5,9 @@ import numpy as np
 from instances.vrp_solution import VRPSolution, Route
 
 
-class VRPNeuralSolution(VRPSolution):
+class VRPNeuralSolution:
     def __init__(self, solution: VRPSolution):
-        super().__init__(solution.instance, solution.routes)
+        self.original_solution = solution
         self.neural_routes = None
         self.static_repr = None
         self.dynamic_repr = None
@@ -41,9 +41,10 @@ class VRPNeuralSolution(VRPSolution):
         assert min_size <= size, f"You should specify an higher size than {size}, the minimum is {min_size}"
 
         incomplete_tours = self.incomplete_neural_routes()
+        instance = self.original_solution.instance
         nn_input = np.zeros((size, 4))
-        nn_input[0, :2] = self.instance.depot  # Depot location
-        nn_input[0, 2] = -1 * self.instance.capacity  # Depot demand
+        nn_input[0, :2] = instance.depot  # Depot location
+        nn_input[0, 2] = -1 * instance.capacity  # Depot demand
         nn_input[0, 3] = -1  # Depot state
         nn_idx_to_route = [None] * size
         nn_idx_to_route[0] = [self.neural_routes[0], 0]
@@ -53,8 +54,8 @@ class VRPNeuralSolution(VRPSolution):
         for tour in incomplete_tours:
             # Create an input for a tour consisting of a single customer
             if len(tour) == 1:
-                nn_input[i, :2] = self.instance.customers[tour[0][0] - 1]
-                nn_input[i, 2] = self.instance.demands[tour[0][0] - 1]
+                nn_input[i, :2] = instance.customers[tour[0][0] - 1]
+                nn_input[i, 2] = instance.demands[tour[0][0] - 1]
                 nn_input[i, 3] = 1
                 tour[0][2] = i
                 nn_idx_to_route[i] = [tour, 0]
@@ -63,7 +64,7 @@ class VRPNeuralSolution(VRPSolution):
             else:
                 # Create an input for the first location in an incomplete tour if the location is not the depot
                 if tour[0][0] != 0:
-                    nn_input[i, :2] = self.instance.customers[tour[0][0] - 1]
+                    nn_input[i, :2] = instance.customers[tour[0][0] - 1]
                     nn_input[i, 2] = sum(c[1] for c in tour)
                     nn_idx_to_route[i] = [tour, 0]
                     tour[0][2] = i
@@ -75,7 +76,7 @@ class VRPNeuralSolution(VRPSolution):
                     i += 1
                 # Create an input for the last location in an incomplete tour if the location is not the depot
                 if tour[-1][0] != 0:
-                    nn_input[i, :2] = self.instance.customers[tour[-1][0] - 1]
+                    nn_input[i, :2] = instance.customers[tour[-1][0] - 1]
                     nn_input[i, 2] = sum(c[1] for c in tour)
                     nn_idx_to_route[i] = [tour, len(tour) - 1]
                     tour[-1][2] = i
@@ -92,7 +93,7 @@ class VRPNeuralSolution(VRPSolution):
         return self.static_repr, self.dynamic_repr
 
     def destroy_nodes(self, to_remove: List[int]):
-        VRPSolution.destroy_nodes(self, to_remove)
+        self.original_solution.destroy_nodes(to_remove)
         self._sync_neural_routes()
 
     def connect(self, id_from, id_to):
@@ -125,10 +126,11 @@ class VRPNeuralSolution(VRPSolution):
         # to an incomplete tour with more than one location 2) Connecting an incomplete tour (single
         # or multiple locations) to incomplete tour consisting of a single location
 
+        instance = self.original_solution.instance
         # Case 1
         if len(tour_from) > 1 and len(tour_to) > 1:
             combined_demand = sum(l[1] for l in tour_from) + sum(l[1] for l in tour_to)
-            assert combined_demand <= self.instance.capacity  # This is ensured by the masking schema
+            assert combined_demand <= instance.capacity  # This is ensured by the masking schema
 
             # The two incomplete tours are combined to one (in)complete tour. All network inputs associated with the
             # two connected tour ends are set to 0
@@ -142,7 +144,7 @@ class VRPNeuralSolution(VRPSolution):
         if len(tour_to) == 1:
             demand_from = sum(l[1] for l in tour_from)
             combined_demand = demand_from + sum(l[1] for l in tour_to)
-            unfulfilled_demand = combined_demand - self.instance.capacity
+            unfulfilled_demand = combined_demand - instance.capacity
 
             # The new tour has a total demand that is smaller than or equal to the vehicle capacity
             if unfulfilled_demand <= 0:
@@ -161,7 +163,7 @@ class VRPNeuralSolution(VRPSolution):
 
                 # Update solution
                 tour_from.append([tour_to[0][0], tour_to[0][1], tour_to[0][2]])  # deepcopy of tour_to
-                tour_from[-1][1] = self.instance.capacity - demand_from
+                tour_from[-1][1] = instance.capacity - demand_from
                 tour_from.append([0, 0, 0])
                 if tour_from[0][0] != 0:
                     tour_from.insert(0, [0, 0, 0])
@@ -183,12 +185,13 @@ class VRPNeuralSolution(VRPSolution):
         return nn_input_update, tour_from[-1][2]
 
     def _sync_neural_routes(self):
-        demands = [0] + self.instance.demands
+        demands = [0] + self.original_solution.instance.demands
         self.neural_routes = [[[c, demands[c], None] if c != 0 else [0, 0, 0] for c in route]
-                              for route in [[0]] + self.routes]
+                              for route in [[0]] + self.original_solution.routes]
 
     def _sync_default_routes(self):
-        self.routes = [Route([c[0] for c in route], self.instance) for route in self.neural_routes[1:]]
+        self.original_solution.routes = [Route([c[0] for c in route], self.original_solution.instance)
+                                         for route in self.neural_routes[1:]]
 
     def _get_network_input_update_for_route(self, route, new_demand):
         """Returns an nn_input update for the tour tour. The demand of the tour is updated to new_demand"""
@@ -228,8 +231,8 @@ class VRPNeuralSolution(VRPSolution):
         return nn_input_update
 
     def __deepcopy__(self, memo):
-        routes_copy = [Route(route[:], self.instance) for route in self.routes]
-        sol_copy = VRPSolution(self.instance, routes_copy)
+        routes_copy = [Route(route[:], self.original_solution.instance) for route in self.original_solution.routes]
+        sol_copy = VRPSolution(self.original_solution.instance, routes_copy)
         neural_sol_copy = VRPNeuralSolution(sol_copy)
         neural_sol_copy._sync_neural_routes()
         neural_sol_copy.network_representation(self.min_nn_repr_size())
