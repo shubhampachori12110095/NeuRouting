@@ -14,10 +14,10 @@ class Encoder(nn.Module):
         return output
 
 
-class VrpCriticModel(nn.Module):
+class VRPCriticModel(nn.Module):
 
     def __init__(self, hidden_size):
-        super(VrpCriticModel, self).__init__()
+        super(VRPCriticModel, self).__init__()
         self.encoder = Encoder(4, hidden_size)
         self.encoder_2 = Encoder(4, hidden_size)
         self.fc1 = nn.Conv1d(hidden_size * 2, hidden_size, kernel_size=1)

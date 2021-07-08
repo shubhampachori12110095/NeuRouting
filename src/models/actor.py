@@ -56,10 +56,10 @@ class Pointer(nn.Module):
         return probs
 
 
-class VrpActorModel(nn.Module):
+class VRPActorModel(nn.Module):
 
     def __init__(self, hidden_size, device="cpu"):
-        super(VrpActorModel, self).__init__()
+        super(VRPActorModel, self).__init__()
         self.all_embed = Encoder(4, hidden_size)
         self.pointer = Pointer(hidden_size, device)
         self.origin_embed = Encoder(4, hidden_size)

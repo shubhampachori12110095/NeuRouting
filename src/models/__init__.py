@@ -1,2 +1,2 @@
-from .actor import VrpActorModel
-from .critic import VrpCriticModel
+from .actor import VRPActorModel
+from .critic import VRPCriticModel
