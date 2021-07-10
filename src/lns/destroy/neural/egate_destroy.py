@@ -5,18 +5,14 @@ import torch
 from torch import nn
 from torch_geometric.data import Data, DataLoader
 
-from environments.lns_environment import BatchLNSEnvironment, LNSEnvironment, SimAnnealingLNSEnvironment
+from environments.lns_environment import BatchLNSEnvironment
 from instances import VRPSolution, VRPInstance
 from lns import LNSOperatorPair
 from lns.destroy import NeuralDestroyProcedure
 from lns.destroy.traditional import DestroyRandom
 from lns.destroy.utils import Buffer, RunningMeanStd
 from lns.repair import RepairProcedure
-from lns.repair.neural import ActorCriticRepair
 from lns.repair.traditional import SCIPRepair
-from models import VRPActorModel
-from models.egate import EgateModel
-from utils.io import read_vrp
 
 
 class EgateDestroy(NeuralDestroyProcedure):
@@ -27,11 +23,10 @@ class EgateDestroy(NeuralDestroyProcedure):
         self.model = model
         self.device = device
 
-    def __call__(self, solution: VRPSolution) -> VRPSolution:
-        with torch.no_grad():
-            return self.multiple([solution])[0]
+    def __call__(self, solution: VRPSolution):
+        self.multiple([solution])
 
-    def multiple(self, solutions: List[VRPSolution]) -> List[VRPSolution]:
+    def multiple(self, solutions: List[VRPSolution]):
         n_nodes = solutions[0].instance.n_customers + 1
         n_removed = int(n_nodes * self.percentage)
         edge_index = torch.LongTensor([[i, j] for i in range(n_nodes) for j in range(n_nodes)]).T
@@ -47,7 +42,6 @@ class EgateDestroy(NeuralDestroyProcedure):
             actions, log_p, values, entropy = self.model(batch, n_removed)
             to_remove = actions.squeeze().tolist()
             solutions[i].destroy_nodes(to_remove)
-        return solutions
 
     @staticmethod
     def _features(solution: VRPSolution) -> Tuple[np.ndarray, np.ndarray]:
@@ -197,16 +191,3 @@ class EgateDestroy(NeuralDestroyProcedure):
         weights = torch.load(path, self.device)
         self.model.load_state_dict(weights)
         self.model.eval()
-
-
-if __name__ == "__main__":
-    inst = read_vrp("../../../../res/A-n32-k5.vrp", grid_dim=100)
-    model = EgateModel(5, 64, 2, 16)
-    destroy = EgateDestroy(model, 0.1)
-    destroy.load_weights("../../../../pretrained/egate.pt")
-    repair = SCIPRepair()
-    neural_repair = ActorCriticRepair(VRPActorModel(128))
-    neural_repair.load_actor_weights('../../../../pretrained/model.pt')
-    lns_op_pair = LNSOperatorPair(destroy, neural_repair)
-    env = LNSEnvironment([lns_op_pair])
-    env.solve(inst, 20)

@@ -28,8 +28,8 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         copy = deepcopy(self.solution)
         destroy_operator, repair_operator, _ = self.select_operator_pair()
         with torch.no_grad():
-            self.solution = destroy_operator(self.solution)
-            self.solution = repair_operator(self.solution)
+            destroy_operator(self.solution)
+            repair_operator(self.solution)
         new_cost = self.solution.cost()
         if new_cost < prev_cost:
             self.cost = new_cost
@@ -69,8 +69,8 @@ class BatchLNSEnvironment(LargeNeighborhoodSearch, BatchVRPEnvironment):
             with torch.no_grad():
                 begin = i * self.batch_size
                 end = min((i + 1) * self.batch_size, n_solutions)
-                self.solutions[begin:end] = destroy_procedure.multiple(self.solutions[begin:end])
-                self.solutions[begin:end] = repair_procedure.multiple(self.solutions[begin:end])
+                destroy_procedure.multiple(self.solutions[begin:end])
+                repair_procedure.multiple(self.solutions[begin:end])
         lns_iter_duration = time.time() - iter_start_time
 
         self.n_steps += 1
@@ -115,8 +115,8 @@ class SimAnnealingLNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         destroy_operator, repair_operator, _ = self.select_operator_pair()
 
         with torch.no_grad():
-            self.copies = destroy_operator.multiple(self.copies)
-            self.copies = repair_operator.multiple(self.copies)
+            destroy_operator.multiple(self.copies)
+            repair_operator.multiple(self.copies)
 
         self.costs = [sol.cost() for sol in self.copies]
 

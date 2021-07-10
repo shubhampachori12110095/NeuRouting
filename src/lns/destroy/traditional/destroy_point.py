@@ -15,10 +15,9 @@ class DestroyPointBased(DestroyProcedure):
         self.percentage = percentage
         self.point = lambda: np.random.rand(1, 2) if point is None else point
 
-    def __call__(self, solution: VRPSolution) -> VRPSolution:
+    def __call__(self, solution: VRPSolution):
         n = solution.instance.n_customers
         customers = np.array(solution.instance.customers)
         dist = np.sum((customers - self.point()) ** 2, axis=1)
         closest_customers = np.argsort(dist)[:int(n * self.percentage)] + 1
         solution.destroy_nodes(to_remove=closest_customers)
-        return solution

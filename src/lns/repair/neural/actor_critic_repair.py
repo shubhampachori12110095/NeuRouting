@@ -26,9 +26,8 @@ class ActorCriticRepair(NeuralRepairProcedure):
         self.critic = critic.to(device) if critic is not None else critic
         self.device = device
 
-    def __call__(self, partial_solution: VRPSolution) -> VRPSolution:
-        with torch.no_grad():
-            return self.multiple([partial_solution])[0]
+    def __call__(self, partial_solution: VRPSolution):
+        self.multiple([partial_solution])
 
     def _actor_model_forward(self,
                              incomplete_solutions: List[VRPNeuralSolution],
@@ -144,7 +143,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
             destroy_procedure.multiple(tr_solutions)
             costs_destroyed = [solution.cost() for solution in tr_solutions]
-            _, tour_logp, critic_est = self._forward(tr_solutions)
+            _, tour_logp, critic_est = self.multiple(tr_solutions)
             costs_repaired = [solution.cost() for solution in tr_solutions]
 
             # Reward/Advantage computation
@@ -206,7 +205,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
                 runtime = (time.time() - start_time)
                 print(f"Validation (Batch {batch_idx}) Costs: {mean_costs:.3f} ({incumbent_costs:.3f}) Runtime: {runtime}")
 
-    def _forward(self, partial_solutions: List[VRPSolution]):
+    def multiple(self, partial_solutions: List[VRPSolution]):
         neural_solutions = [VRPNeuralSolution(solution) for solution in partial_solutions]
         emb_size = max([solution.min_nn_repr_size() for solution in neural_solutions])  # Max. input points of envs
         batch_size = len(neural_solutions)
@@ -230,10 +229,6 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
         tour_idx, tour_logp = self._actor_model_forward(neural_solutions, static_input, dynamic_input, capacity)
         return tour_idx, tour_logp, cost_estimate
-
-    def multiple(self, partial_solutions: List[VRPSolution]) -> List[VRPSolution]:
-        self._forward(partial_solutions)
-        return partial_solutions
 
     @staticmethod
     def _get_mask(origin_nn_input_idx, dynamic_input, solutions: List[VRPNeuralSolution], capacity: int):

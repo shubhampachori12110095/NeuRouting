@@ -17,7 +17,7 @@ class DestroyTourBased(DestroyProcedure):
         else:
             self.point = point
 
-    def __call__(self, solution: VRPSolution) -> VRPSolution:
+    def __call__(self, solution: VRPSolution):
         # Make a dictionary that maps customers to tours
         customer_to_tour = {}
         for i, tour in enumerate(solution.routes):
@@ -50,4 +50,3 @@ class DestroyTourBased(DestroyProcedure):
             for c in solution.routes[tour - 1][1:-1]:
                 to_remove.add(c)
         solution.destroy_nodes(to_remove=list(to_remove))
-        return solution

@@ -11,8 +11,7 @@ class DestroyRandom(DestroyProcedure):
         assert 0 <= percentage <= 1
         self.percentage = percentage
 
-    def __call__(self, solution: VRPSolution) -> VRPSolution:
+    def __call__(self, solution: VRPSolution):
         n = solution.instance.n_customers
         random_customers = np.random.choice(range(1, n + 1), int(n * self.percentage), replace=False)
         solution.destroy_nodes(to_remove=random_customers)
-        return solution

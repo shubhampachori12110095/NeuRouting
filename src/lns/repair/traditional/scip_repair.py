@@ -26,4 +26,3 @@ class SCIPRepair(RepairProcedure):
         sub_mip.optimize()
         new_sol = VRPSolution.from_edges(partial_solution.instance, self._get_solution_edges(sub_mip))
         partial_solution.routes = new_sol.routes
-        return partial_solution
