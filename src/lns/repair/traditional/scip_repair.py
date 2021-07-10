@@ -24,4 +24,6 @@ class SCIPRepair(RepairProcedure):
             sub_mip.fixVar(varname2var[f'x({x}, {y})'], 1)
         sub_mip.setParam("limits/time", 1e20)  # no time limit
         sub_mip.optimize()
-        return VRPSolution.from_edges(partial_solution.instance, self._get_solution_edges(sub_mip))
+        new_sol = VRPSolution.from_edges(partial_solution.instance, self._get_solution_edges(sub_mip))
+        partial_solution.routes = new_sol.routes
+        return partial_solution

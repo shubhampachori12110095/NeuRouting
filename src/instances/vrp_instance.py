@@ -45,7 +45,7 @@ def generate_instance(n_customers: int = 50,
         pass
 
 
-def generate_multiple_instances(n_instances,
+def generate_multiple_instances(n_instances: int,
                                 n_customers: int = 50,
                                 capacity: int = 40,
                                 distribution: str = 'uniform') -> List[VRPInstance]:

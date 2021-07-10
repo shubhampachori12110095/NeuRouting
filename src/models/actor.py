@@ -46,7 +46,7 @@ class Pointer(nn.Module):
     def forward(self, all_hidden, origin_hidden):
         enc_attn = self.encoder_attn(all_hidden, origin_hidden.transpose(2, 1).squeeze(1))
         context = enc_attn.bmm(all_hidden.permute(0, 2, 1))
-        input = torch.cat((origin_hidden.squeeze(), context.squeeze()), dim=1)
+        input = torch.cat((origin_hidden.squeeze(axis=2), context.squeeze(axis=1)), dim=1)
         output = F.relu(self.fc1(input))
         output = F.relu(self.fc2(output))
         output = output.unsqueeze(2)

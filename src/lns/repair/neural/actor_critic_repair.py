@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch import optim
 
 from environments.lns_environment import BatchLNSEnvironment
-from instances import generate_multiple_instances, VRPSolution
+from instances import VRPSolution, VRPInstance
 from lns import LNSOperatorPair
 from lns.destroy import DestroyProcedure
 from lns.initial import nearest_neighbor_solution
@@ -115,17 +115,12 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
         return self.critic.forward(static_input, dynamic_input_float).view(-1)
 
-    def train(self, destroy_procedure: DestroyProcedure, n_samples: int, val_split: float, batch_size: int):
-        print("Generating training data...")
-        train_size = round(n_samples * (1 - val_split))
-        val_size = n_samples - train_size
-        # Create training and validation set. The initial solutions are created greedily
-        training_set = [nearest_neighbor_solution(inst)
-                        for inst in generate_multiple_instances(n_instances=train_size, n_customers=30)]
-        print(f"{len(training_set)} samples generated.")
-        print("Generating validation data...")
-        validation_set = [inst for inst in generate_multiple_instances(n_instances=val_size, n_customers=30)]
-        print(f"{len(validation_set)} samples generated.")
+    def train(self, instances: List[VRPInstance], destroy_procedure: DestroyProcedure, val_split: float, batch_size: int):
+        train_size = round(len(instances) * (1 - val_split))
+        val_size = len(instances) - train_size
+        training_set = [nearest_neighbor_solution(inst) for inst in instances[:train_size]]
+        validation_set = instances[train_size:train_size + val_size]
+
         actor_optim = optim.Adam(self.actor.parameters(), lr=1e-4)
         self.actor.train()
         critic_optim = optim.Adam(self.critic.parameters(), lr=5e-4)

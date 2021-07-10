@@ -15,5 +15,5 @@ class DestroyProcedure(ABC):
 
 class NeuralDestroyProcedure(DestroyProcedure):
     @abstractmethod
-    def train(self, repair_procedure, n_samples, val_split, batch_size):
+    def train(self, instances, repair_procedure, val_split, batch_size, epochs):
         pass
