@@ -1,6 +1,7 @@
 from typing import List
 
 import numpy as np
+from more_itertools import split_after
 
 from instances.vrp_instance import VRPInstance
 
@@ -67,6 +68,14 @@ class VRPSolution:
         return [(from_id, to_id) for route in self.complete_routes() + self.incomplete_routes()
                 for from_id, to_id in zip(route[:-1], route[1:])]
 
+    def adjacency_matrix(self) -> np.ndarray:
+        adj = np.zeros((self.instance.n_customers + 1, self.instance.n_customers + 1), dtype=int)
+        for i, j in self.as_edges():
+            # nodes_target[i] = idx  # node targets: ordering of nodes in tour
+            adj[i][j] = 1
+            adj[j][i] = 1
+        return adj
+
     def missing_customers(self) -> List[int]:
         return list(set(range(self.instance.n_customers + 1)) - set([from_id for from_id, _ in self.as_edges()]))
 
@@ -98,7 +107,7 @@ class VRPSolution:
 
     def get_customer_route(self, customer_idx: int) -> Route:
         for route in self.routes:
-            if customer_idx in route:
+            if customer_idx in route and len(route) > 1:
                 return route
 
     def destroy_nodes(self, to_remove: List[int]):
@@ -134,6 +143,18 @@ class VRPSolution:
         complete_routes = [Route(cr, self.instance) for cr in complete_routes]
         incomplete_routes = [Route(ir, self.instance) for ir in incomplete_routes]
         self.routes = complete_routes + incomplete_routes
+
+    def destroy_edges(self, to_remove: List[tuple]):
+        for edge in to_remove:
+            route = self.get_customer_route(edge[0])
+            splits = list(split_after(route, lambda x: x == edge[0]))
+            assert len(splits) == 2, f"{route}: {splits} because of {edge}"
+            presplit, postsplit = splits
+            presplit = Route(presplit, self.instance)
+            postsplit = Route(postsplit, self.instance)
+            self.routes.remove(route)
+            self.routes.append(presplit)
+            self.routes.append(postsplit)
 
     def __deepcopy__(self, memo):
         routes_copy = [Route(route[:], self.instance) for route in self.routes]

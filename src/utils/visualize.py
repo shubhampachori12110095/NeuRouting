@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 
 
 def discrete_cmap(n, base_cmap='nipy_spectral'):
@@ -47,7 +48,7 @@ def plot_vrp(ax, instance, solution=None, node_size=100, font_size=12):
                 label=f'Vehicle {vehicle}'
             )
             qvs.append(qv)
-            ax.legend(handles=qvs)
+            # ax.legend(handles=qvs)
         for i, route in enumerate(incomplete_routes):
             color = cmap(i + 1)
             route = [r for r in route if r != 0]
@@ -61,5 +62,29 @@ def plot_vrp(ax, instance, solution=None, node_size=100, font_size=12):
             ax.scatter(instance.customers[i][0], instance.customers[i][1], c='orange', s=node_size)
 
     for i in range(instance.n_customers):
+        # ax.text(instance.customers[i][0], instance.customers[i][1], str(instance.demands[i]), fontsize=font_size)
+        ax.text(instance.customers[i][0], instance.customers[i][1], str(i + 1), fontsize=font_size)
+
+
+def plot_heatmap(ax, instance, heatmap, threshold=0, node_size=100, font_size=12):
+    ax.set_xlim([-0.05, 1.05])
+    ax.set_ylim([-0.05, 1.05])
+    coords = np.array([instance.depot] + instance.customers)
+
+    mask = heatmap > threshold
+    frm, to = np.triu(mask).nonzero()
+    edges_coords = np.stack((coords[frm], coords[to]), -2)
+
+    weights = (heatmap[frm, to] - threshold) / (1 - threshold)
+    # weights = heatmap[frm, to]
+    edge_colors = np.concatenate((np.tile([1, 0, 0], (len(weights), 1)), weights[:, None]), -1)
+
+    lc_edges = LineCollection(edges_coords, colors=edge_colors, linewidths=1)
+    ax.add_collection(lc_edges)
+
+    ax.scatter(instance.depot[0], instance.depot[1], c='black', s=node_size, marker='s')
+    ax.text(instance.depot[0], instance.depot[1], "D", fontsize=font_size)
+    for i in range(instance.n_customers):
+        ax.scatter(instance.customers[i][0], instance.customers[i][1], c='orange', s=node_size)
         # ax.text(instance.customers[i][0], instance.customers[i][1], str(instance.demands[i]), fontsize=font_size)
         ax.text(instance.customers[i][0], instance.customers[i][1], str(i + 1), fontsize=font_size)

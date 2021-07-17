@@ -14,6 +14,8 @@ class LNSOperatorPair:
 
 
 class LargeNeighborhoodSearch:
+    EMA_ALPHA = 0.2
+
     def __init__(self,
                  operator_pairs: List[LNSOperatorPair],
                  initial=nearest_neighbor_solution,

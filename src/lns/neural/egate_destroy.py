@@ -5,17 +5,16 @@ import torch
 from torch import nn
 from torch_geometric.data import Data, DataLoader
 
-from environments.lns_environment import BatchLNSEnvironment
+from lns.environments import BatchLNSEnvironment
 from instances import VRPSolution, VRPInstance
 from lns import LNSOperatorPair
-from lns.destroy import NeuralDestroyProcedure
-from lns.destroy.traditional import DestroyRandom
-from lns.destroy.utils import Buffer, RunningMeanStd
-from lns.repair import RepairProcedure
-from lns.repair.traditional import SCIPRepair
+from lns.destroy import DestroyProcedure, DestroyRandom
+from lns.repair import RepairProcedure, SCIPRepair
+from lns.neural import NeuralProcedure
+from lns.utils import Buffer, RunningMeanStd
 
 
-class EgateDestroy(NeuralDestroyProcedure):
+class EgateDestroy(DestroyProcedure, NeuralProcedure):
 
     def __init__(self, model: nn.Module, percentage: float, device="cpu"):
         assert 0 <= percentage <= 1
@@ -28,7 +27,7 @@ class EgateDestroy(NeuralDestroyProcedure):
 
     def multiple(self, solutions: List[VRPSolution]):
         n_nodes = solutions[0].instance.n_customers + 1
-        n_removed = int(n_nodes * self.percentage)
+        n_remove = int(n_nodes * self.percentage)
         edge_index = torch.LongTensor([[i, j] for i in range(n_nodes) for j in range(n_nodes)]).T
         states = [self._features(sol) for sol in solutions]
         dataset = []
@@ -39,7 +38,7 @@ class EgateDestroy(NeuralDestroyProcedure):
             dataset.append(data)
         data_loader = DataLoader(dataset)
         for i, batch in enumerate(data_loader):
-            actions, log_p, values, entropy = self.model(batch, n_removed)
+            actions, log_p, values, entropy = self.model(batch, n_remove)
             to_remove = actions.squeeze().tolist()
             solutions[i].destroy_nodes(to_remove)
 
@@ -62,7 +61,7 @@ class EgateDestroy(NeuralDestroyProcedure):
         edges = edges.reshape(-1, 2)
         return nodes, edges
 
-    def train(self, instances: List[VRPInstance], repair_procedure: RepairProcedure, val_split: float, batch_size: int, epochs: int):
+    def train(self, instances: List[VRPInstance], opposite_procedure: RepairProcedure, val_split: float, batch_size: int, epochs: int):
         train_size = round(len(instances) * (1 - val_split))
         val_size = len(instances) - train_size
         training_set = instances[:train_size]
@@ -88,7 +87,7 @@ class EgateDestroy(NeuralDestroyProcedure):
             all_datas = []
             for i in range(n_rollout):
                 is_last = (i == n_rollout - 1)
-                datas, states = self._rollout(train_env.solutions, repair_procedure, n_steps=2, is_last=is_last)
+                datas, states = self._rollout(train_env.solutions, opposite_procedure, n_steps=2, is_last=is_last)
                 print(f"Rollout {i} completed.")
                 all_datas.extend(datas)
             print("Rollout completed successfully.")
@@ -122,7 +121,7 @@ class EgateDestroy(NeuralDestroyProcedure):
                 for sol, to_remove in zip(solutions, actions):
                     prev_cost = sol.cost()
                     sol.destroy_nodes(to_remove)
-                    sol = repair_procedure(sol)
+                    repair_procedure(sol)
                     sol.verify()
                     new_cost = sol.cost()
                     nodes, edges = self._features(sol)

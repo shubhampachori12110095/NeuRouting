@@ -7,15 +7,15 @@ from typing import List
 import numpy as np
 import torch
 
-from environments.vrp_environment import VRPEnvironment, BatchVRPEnvironment
+from lns.environments import VRPEnvironment, BatchVRPEnvironment
 from instances import VRPInstance, VRPSolution
 from lns import LargeNeighborhoodSearch, LNSOperatorPair
-from lns.initial.nearest_neighbor import nearest_neighbor_solution
+from lns.initial import nearest_neighbor_solution
 
 
 class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
-    def __init__(self, operator_pairs: List[LNSOperatorPair], initial=nearest_neighbor_solution):
-        super().__init__(operator_pairs, initial)
+    def __init__(self, operator_pairs: List[LNSOperatorPair], initial=nearest_neighbor_solution, adaptive=False):
+        super().__init__(operator_pairs, initial, adaptive)
         self.cost = None
 
     def reset(self, instance: VRPInstance):
@@ -26,22 +26,30 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
     def step(self) -> float:
         prev_cost = self.cost
         copy = deepcopy(self.solution)
-        destroy_operator, repair_operator, _ = self.select_operator_pair()
+        destroy_operator, repair_operator, idx = self.select_operator_pair()
+        iter_start_time = time.time()
         with torch.no_grad():
             destroy_operator(self.solution)
             repair_operator(self.solution)
+        lns_iter_duration = time.time() - iter_start_time
+
         new_cost = self.solution.cost()
+        # If adaptive search is used, update performance scores
+        if self.adaptive:
+            delta = (prev_cost - new_cost) / lns_iter_duration
+            if self.performances[idx] == np.inf:
+                self.performances[idx] = delta
+            self.performances[idx] = self.performances[idx] * (1 - self.EMA_ALPHA) + delta * self.EMA_ALPHA
+
+        self.render()
         if new_cost < prev_cost:
             self.cost = new_cost
-            self.render()
         else:
             self.solution = copy
         return prev_cost - new_cost
 
 
 class BatchLNSEnvironment(LargeNeighborhoodSearch, BatchVRPEnvironment):
-
-    EMA_ALPHA = 0.2
 
     def __init__(self, batch_size: int, operator_pairs: List[LNSOperatorPair],
                  initial=nearest_neighbor_solution, adaptive=False):

@@ -10,16 +10,17 @@ import numpy as np
 import torch.nn.functional as F
 from torch import optim
 
-from environments.lns_environment import BatchLNSEnvironment
+from lns.environments.lns_environment import BatchLNSEnvironment
 from instances import VRPSolution, VRPInstance
 from lns import LNSOperatorPair
-from lns.destroy import DestroyProcedure
 from lns.initial import nearest_neighbor_solution
-from lns.repair.utils import VRPNeuralSolution
-from lns.repair import NeuralRepairProcedure
+from lns.destroy import DestroyProcedure
+from lns.repair import RepairProcedure
+from lns.neural import NeuralProcedure
+from lns.utils.vrp_neural_solution import VRPNeuralSolution
 
 
-class ActorCriticRepair(NeuralRepairProcedure):
+class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
     def __init__(self, actor: nn.Module, critic: nn.Module = None, device: str = 'cpu'):
         self.actor = actor.to(device)
@@ -114,7 +115,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
         return self.critic.forward(static_input, dynamic_input_float).view(-1)
 
-    def train(self, instances: List[VRPInstance], destroy_procedure: DestroyProcedure, val_split: float, batch_size: int):
+    def train(self, instances: List[VRPInstance], opposite_procedure: DestroyProcedure, val_split: float, batch_size: int, epochs=1):
         train_size = round(len(instances) * (1 - val_split))
         val_size = len(instances) - train_size
         training_set = [nearest_neighbor_solution(inst) for inst in instances[:train_size]]
@@ -128,7 +129,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
         losses_actor, rewards, diversity_values, losses_critic = [], [], [], []
         incumbent_costs = np.inf
 
-        eval_env = BatchLNSEnvironment(batch_size, [LNSOperatorPair(destroy_procedure, self)])
+        eval_env = BatchLNSEnvironment(batch_size, [LNSOperatorPair(opposite_procedure, self)])
 
         start_time = time.time()
 
@@ -141,7 +142,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
             tr_solutions = [deepcopy(sol) for sol in training_set[begin:end]]
             print(f"Batch {batch_idx}: {len(tr_solutions)} samples")
 
-            destroy_procedure.multiple(tr_solutions)
+            opposite_procedure.multiple(tr_solutions)
             costs_destroyed = [solution.cost() for solution in tr_solutions]
             _, tour_logp, critic_est = self.multiple(tr_solutions)
             costs_repaired = [solution.cost() for solution in tr_solutions]
@@ -195,7 +196,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
                 if mean_costs < incumbent_costs:
                     incumbent_costs = mean_costs
-                    incumbent_model_path = "../../pretrained/model.pt"
+                    incumbent_model_path = "../../pretrained/hottung_tierney_actor.pt"
                     model_data = {
                         'model_name': "VrpActorModel",
                         'parameters': self.actor.state_dict()
@@ -265,7 +266,7 @@ class ActorCriticRepair(NeuralRepairProcedure):
 
         return mask
 
-    def load_actor_weights(self, path: str):
+    def load_weights(self, path: str):
         model = torch.load(path, self.device)
         self.actor.load_state_dict(model['parameters'])
         self.actor.eval()

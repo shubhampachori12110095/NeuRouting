@@ -1,4 +1,5 @@
 import os
+import pickle
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -88,6 +89,17 @@ def read_solution(filename: str, n: int) -> List[List[int]]:
     tour[tour > n] = 0  # Any nodes above the number of nodes there are is also depot
     tour = tour[1:].tolist() + [0]
     return list([0] + t for t in split_after(tour, lambda x: x == 0))
+
+
+def check_extension(filename: str):
+    if os.path.splitext(filename)[1] != ".pkl":
+        return filename + ".pkl"
+    return filename
+
+
+def load_dataset(filename: str):
+    with open(check_extension(filename), 'rb') as f:
+        return pickle.load(f)
 
 
 if __name__ == "__main__":

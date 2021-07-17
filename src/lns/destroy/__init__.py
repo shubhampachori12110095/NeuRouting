@@ -1,19 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import List
-
-from instances import VRPSolution
-
-
-class DestroyProcedure(ABC):
-    @abstractmethod
-    def __call__(self, solution: VRPSolution):
-        pass
-
-    def multiple(self, solutions: List[VRPSolution]):
-        return [self(sol) for sol in solutions]
-
-
-class NeuralDestroyProcedure(DestroyProcedure):
-    @abstractmethod
-    def train(self, instances, repair_procedure, val_split, batch_size, epochs):
-        pass
+from .destroy_procedure import DestroyProcedure
+from .destroy_random import DestroyRandom
+from .destroy_point import DestroyPointBased
+from .destroy_tour import DestroyTourBased
