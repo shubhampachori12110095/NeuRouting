@@ -4,7 +4,6 @@ from math import ceil
 from typing import List
 
 import torch
-import torch.nn as nn
 import numpy as np
 
 import torch.nn.functional as F
@@ -18,11 +17,12 @@ from lns.destroy import DestroyProcedure
 from lns.repair import RepairProcedure
 from lns.neural import NeuralProcedure
 from lns.utils.vrp_neural_solution import VRPNeuralSolution
+from models import VRPActorModel, VRPCriticModel
 
 
 class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
-    def __init__(self, actor: nn.Module, critic: nn.Module = None, device: str = 'cpu'):
+    def __init__(self, actor: VRPActorModel, critic: VRPCriticModel = None, device: str = 'cpu'):
         self.actor = actor.to(device)
         self.critic = critic.to(device) if critic is not None else critic
         self.device = device
@@ -30,11 +30,7 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
     def __call__(self, partial_solution: VRPSolution):
         self.multiple([partial_solution])
 
-    def _actor_model_forward(self,
-                             incomplete_solutions: List[VRPNeuralSolution],
-                             static_input,
-                             dynamic_input,
-                             vehicle_capacity: int):
+    def _actor_model_forward(self, incomplete_solutions, static_input, dynamic_input, vehicle_capacity):
         batch_size = static_input.shape[0]
         tour_idx, tour_logp = [], []
 
@@ -48,7 +44,8 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
                 if origin_idx[i] == 0 and not solutions_repaired[i]:
                     origin_idx[i] = np.random.choice(solution.incomplete_nn_idx, 1).item()
 
-            mask = self._get_mask(origin_idx, dynamic_input, incomplete_solutions, vehicle_capacity).to(self.device).float()
+            mask = self._get_mask(origin_idx, dynamic_input, incomplete_solutions, vehicle_capacity) \
+                .to(self.device).float()
 
             # Rescale customer demand based on vehicle capacity
             dynamic_input_float = dynamic_input.float()
@@ -115,11 +112,11 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
         return self.critic.forward(static_input, dynamic_input_float).view(-1)
 
-    def train(self, instances: List[VRPInstance], opposite_procedure: DestroyProcedure, val_split: float, batch_size: int, epochs=1):
-        train_size = round(len(instances) * (1 - val_split))
-        val_size = len(instances) - train_size
-        training_set = [nearest_neighbor_solution(inst) for inst in instances[:train_size]]
-        validation_set = instances[train_size:train_size + val_size]
+    def train(self, train_instances: List[VRPInstance], val_instances: List[VRPInstance],
+              opposite_procedure: DestroyProcedure, path: str, batch_size: int, epochs: int = 1):
+        train_size = len(train_instances)
+        training_set = [nearest_neighbor_solution(inst) for inst in train_instances]
+        validation_set = val_instances
 
         actor_optim = optim.Adam(self.actor.parameters(), lr=1e-4)
         self.actor.train()
@@ -138,9 +135,7 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
         for batch_idx in range(n_batches):
             begin = batch_idx * batch_size
             end = min((batch_idx + 1) * batch_size, train_size)
-            print(f"From {begin} to {end}")
             tr_solutions = [deepcopy(sol) for sol in training_set[begin:end]]
-            print(f"Batch {batch_idx}: {len(tr_solutions)} samples")
 
             opposite_procedure.multiple(tr_solutions)
             costs_destroyed = [solution.cost() for solution in tr_solutions]
@@ -175,36 +170,43 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
             for i in range(end - begin):
                 training_set[batch_idx * batch_size + i] = tr_solutions[i]
 
-            log_interval = 1
-            eval_interval = 4
+            log_interval = n_batches // 100
+            eval_interval = n_batches // 5
 
             # Log performance
             if (batch_idx + 1) % log_interval == 0:
                 mean_loss = np.mean(losses_actor[-log_interval:])
                 mean_critic_loss = np.mean(losses_critic[-log_interval:])
                 mean_reward = np.mean(rewards[-log_interval:])
-                print(f'Batch {batch_idx + 1}/{n_batches}, repair costs (reward): {mean_reward:2.3f}, '
-                      f'actor loss: {mean_loss:2.6f}, critic_loss: {mean_critic_loss:2.6f}')
+                print(f'[TRAIN] {batch_idx + 1}/{n_batches}: '
+                      f'repair costs (reward): {mean_reward:2.3f}, '
+                      f'actor loss: {mean_loss:2.6f}, '
+                      f'critic_loss: {mean_critic_loss:2.6f}.')
 
             # Evaluate and save model every bunch of batches
             if (batch_idx + 1) % eval_interval == 0 or batch_idx == n_batches - 1:
                 val_instances = [deepcopy(instance) for instance in validation_set]
                 self.actor.eval()
-                solutions = eval_env.solve(val_instances, time_limit=10)
+                start_eval_time = time.time()
+                solutions = eval_env.solve(val_instances)
+                runtime = (time.time() - start_eval_time)
                 self.actor.train()
                 mean_costs = np.mean([sol.cost() for sol in solutions])
 
+                print(f"[VAL] {batch_idx}/{n_batches}: "
+                      f"mean costs: {mean_costs:.3f}, "
+                      f"incumbent costs: {incumbent_costs:.3f}, "
+                      f"runtime: {runtime} seconds.")
+
                 if mean_costs < incumbent_costs:
                     incumbent_costs = mean_costs
-                    incumbent_model_path = "../../pretrained/hottung_tierney_actor.pt"
                     model_data = {
-                        'model_name': "VrpActorModel",
+                        'model_name': f"vrp_actor_model_{batch_idx}",
                         'parameters': self.actor.state_dict()
                     }
-                    torch.save(model_data, incumbent_model_path)
+                    torch.save(model_data, path)
 
-                runtime = (time.time() - start_time)
-                print(f"Validation (Batch {batch_idx}) Costs: {mean_costs:.3f} ({incumbent_costs:.3f}) Runtime: {runtime}")
+        print(f"Training completed successfully in {time.time() - start_time} seconds.")
 
     def multiple(self, partial_solutions: List[VRPSolution]):
         neural_solutions = [VRPNeuralSolution(solution) for solution in partial_solutions]

@@ -56,7 +56,8 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
     def __call__(self, solution: VRPSolution):
         self.multiple([solution])
 
-    def train(self, instances: List[VRPInstance], opposite_procedure: RepairProcedure, val_split: float, batch_size: int, epochs: int):
+    def train(self, train_instances: List[VRPInstance], val_instances: List[VRPInstance],
+              opposite_procedure: RepairProcedure, path: str, batch_size: int, epochs: int):
         pass
 
     def load_weights(self, path: str):
