@@ -3,7 +3,8 @@ from typing import List
 
 from pyscipopt import Model
 
-from instances import VRPSolution, VRPModelSCIP
+from instances.vrp_solution import VRPSolution
+from instances.vrp_model_scip import VRPModelSCIP
 from lns.repair import RepairProcedure
 
 

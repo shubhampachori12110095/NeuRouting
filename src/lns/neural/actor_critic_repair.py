@@ -4,6 +4,7 @@ from math import ceil
 from typing import List
 
 import torch
+import wandb
 import numpy as np
 
 import torch.nn.functional as F
@@ -130,8 +131,8 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
         start_time = time.time()
 
-        print("Starting training...")
         n_batches = ceil(float(train_size) / batch_size)
+        print(f"Starting training with {n_batches} batches...")
         for batch_idx in range(n_batches):
             begin = batch_idx * batch_size
             end = min((batch_idx + 1) * batch_size, train_size)
@@ -170,7 +171,7 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
             for i in range(end - begin):
                 training_set[batch_idx * batch_size + i] = tr_solutions[i]
 
-            log_interval = n_batches // 100
+            log_interval = n_batches // 10
             eval_interval = n_batches // 5
 
             # Log performance
@@ -179,9 +180,13 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
                 mean_critic_loss = np.mean(losses_critic[-log_interval:])
                 mean_reward = np.mean(rewards[-log_interval:])
                 print(f'[TRAIN] {batch_idx + 1}/{n_batches}: '
-                      f'repair costs (reward): {mean_reward:2.3f}, '
-                      f'actor loss: {mean_loss:2.6f}, '
+                      f'mean_reward (repair costs): {mean_reward:2.3f}, '
+                      f'actor_loss: {mean_loss:2.6f}, '
                       f'critic_loss: {mean_critic_loss:2.6f}.')
+                wandb.log({"train/batch_idx": batch_idx + 1,
+                           "train/mean_reward": mean_reward,
+                           "train/actor_loss": mean_loss,
+                           "train/critic_loss": mean_critic_loss})
 
             # Evaluate and save model every bunch of batches
             if (batch_idx + 1) % eval_interval == 0 or batch_idx == n_batches - 1:
@@ -193,10 +198,12 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
                 self.actor.train()
                 mean_costs = np.mean([sol.cost() for sol in solutions])
 
-                print(f"[VAL] {batch_idx}/{n_batches}: "
+                print(f"[VAL] {batch_idx + 1}/{n_batches}: "
                       f"mean costs: {mean_costs:.3f}, "
                       f"incumbent costs: {incumbent_costs:.3f}, "
                       f"runtime: {runtime} seconds.")
+                wandb.log({"val/batch_idx": batch_idx + 1,
+                           "val/mean_cost": mean_costs})
 
                 if mean_costs < incumbent_costs:
                     incumbent_costs = mean_costs

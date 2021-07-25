@@ -2,7 +2,6 @@ from typing import Tuple, List
 
 import numpy as np
 import torch
-from torch import nn
 from torch_geometric.data import Data, DataLoader
 
 from lns.environments import BatchLNSEnvironment
@@ -12,11 +11,12 @@ from lns.destroy import DestroyProcedure, DestroyRandom
 from lns.repair import RepairProcedure, SCIPRepair
 from lns.neural import NeuralProcedure
 from lns.utils import Buffer, RunningMeanStd
+from models import EgateModel
 
 
 class EgateDestroy(DestroyProcedure, NeuralProcedure):
 
-    def __init__(self, model: nn.Module, percentage: float, device="cpu"):
+    def __init__(self, model: EgateModel, percentage: float, device="cpu"):
         assert 0 <= percentage <= 1
         self.percentage = percentage
         self.model = model
@@ -61,21 +61,18 @@ class EgateDestroy(DestroyProcedure, NeuralProcedure):
         edges = edges.reshape(-1, 2)
         return nodes, edges
 
-    def train(self, instances: List[VRPInstance], opposite_procedure: RepairProcedure, val_split: float, batch_size: int, epochs: int):
-        train_size = round(len(instances) * (1 - val_split))
-        val_size = len(instances) - train_size
-        training_set = instances[:train_size]
-        validation_set = instances[train_size:train_size + val_size]
+    def train(self, train_instances: List[VRPInstance], val_instances: List[VRPInstance],
+              opposite_procedure: RepairProcedure, path: str, batch_size: int, epochs: int):
 
+        train_instances = np.array(train_instances)
         opt = torch.optim.Adam(self.model.parameters(), lr=3e-4)
 
         random_op_pair = LNSOperatorPair(DestroyRandom(self.percentage), SCIPRepair())
         train_env = BatchLNSEnvironment(operator_pairs=[random_op_pair], batch_size=batch_size)
 
         for epoch in range(epochs):
-            # Random init
-            train_env.reset(training_set)
-            pre_steps = 5
+            train_env.reset(train_instances[np.random.choice(len(train_instances), size=batch_size, replace=False)])
+            pre_steps = 2
             for i in range(pre_steps):
                 train_env.step()
             for sol in train_env.solutions:
@@ -83,11 +80,11 @@ class EgateDestroy(DestroyProcedure, NeuralProcedure):
             print(f"Random initialization completed.")
 
             # Rollout phase
-            n_rollout = 2
+            n_rollout, steps_rollout = 10, 10
             all_datas = []
             for i in range(n_rollout):
                 is_last = (i == n_rollout - 1)
-                datas, states = self._rollout(train_env.solutions, opposite_procedure, n_steps=2, is_last=is_last)
+                datas, states = self._rollout(train_env.solutions, opposite_procedure, n_steps=steps_rollout, is_last=is_last)
                 print(f"Rollout {i} completed.")
                 all_datas.extend(datas)
             print("Rollout completed successfully.")
@@ -97,12 +94,10 @@ class EgateDestroy(DestroyProcedure, NeuralProcedure):
             dl = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
             for step in range(train_steps):
                 loss_v, loss_p, loss, entropy = self._train_once(dl, opt)
-                print("epoch:", epoch, "step:", step, "loss_v:", loss_v, "loss_p:", loss_p, "loss:",
+                print("Epoch:", epoch, "step:", step, "loss_v:", loss_v, "loss_p:", loss_p, "loss:",
                       loss, "entropy:", entropy)
 
-            # Validation phase (?)
-
-        torch.save(self.model.state_dict(), "../../pretrained/egate.pt")
+        torch.save(self.model.state_dict(), path)
 
     def _rollout(self, solutions, repair_procedure, n_steps, is_last):
         n_nodes = solutions[0].instance.n_customers
