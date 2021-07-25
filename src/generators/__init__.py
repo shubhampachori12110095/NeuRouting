@@ -1,0 +1,1 @@
+from .vrp_generator import generate_instance, generate_multiple_instances

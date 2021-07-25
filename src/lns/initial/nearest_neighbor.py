@@ -1,7 +1,6 @@
-import matplotlib.pyplot as plt
 import numpy as np
 
-from instances import generate_instance, VRPInstance, VRPSolution, Route
+from instances import VRPInstance, VRPSolution, Route
 
 
 def nearest_neighbor_solution(instance: VRPInstance) -> VRPSolution:
@@ -35,13 +34,3 @@ def closest_locations(instance: VRPInstance, location_idx: int, n: int, mask=Non
     distances[~mask] = np.inf
     order = np.argsort(distances)
     return order[:n]
-
-
-if __name__ == "__main__":
-    inst = generate_instance()
-    inst.plot()
-    plt.show()
-    sol = nearest_neighbor_solution(inst)
-    print(sol.routes)
-    inst.plot(sol)
-    plt.show()
