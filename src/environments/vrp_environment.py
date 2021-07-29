@@ -37,6 +37,7 @@ class BatchVRPEnvironment(ABC):
     def __init__(self):
         self.instances = None
         self.solutions = None
+        self.n_steps = 0
 
     @abstractmethod
     def reset(self, instances: List[VRPInstance]):
@@ -46,10 +47,10 @@ class BatchVRPEnvironment(ABC):
     def step(self):
         pass
 
-    def solve(self, instances: List[VRPInstance], time_limit: int = 60) -> List[VRPSolution]:
+    def solve(self, instances: List[VRPInstance], time_limit: int = 60, max_steps: int = 1e20) -> List[VRPSolution]:
         start_time = time.time()
         self.reset(instances)
-        while time.time() - start_time < time_limit:
+        while self.n_steps < max_steps and time.time() - start_time < time_limit:
             self.step()
         for sol in self.solutions:
             sol.verify()

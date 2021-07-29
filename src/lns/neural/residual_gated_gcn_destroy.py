@@ -60,7 +60,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
               opposite_procedure: RepairProcedure, path: str, batch_size: int, epochs: int):
         pass
 
-    def load_weights(self, path: str):
+    def load_weights(self, checkpoint_path: str):
         weights = torch.load(path, self.device)
         self.model.load_state_dict(weights['model_state_dict'])
         self.model.eval()

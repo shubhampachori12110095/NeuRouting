@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import torch
 
-from lns.environments import VRPEnvironment, BatchVRPEnvironment
+from environments import VRPEnvironment, BatchVRPEnvironment
 from instances import VRPInstance, VRPSolution
 from lns import LargeNeighborhoodSearch, LNSOperatorPair
 from lns.initial import nearest_neighbor_solution
@@ -55,7 +55,6 @@ class BatchLNSEnvironment(LargeNeighborhoodSearch, BatchVRPEnvironment):
                  initial=nearest_neighbor_solution, adaptive=False):
         super().__init__(operator_pairs, initial, adaptive)
         self.batch_size = batch_size
-        self.n_steps = 0
         self.costs = None
 
     def reset(self, instances: List[VRPInstance]):

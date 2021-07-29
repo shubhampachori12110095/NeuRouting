@@ -25,24 +25,20 @@ class Buffer:
         rewards = np.array(self.buf_rewards)
         # rewards = (rewards - rewards.mean()) / rewards.std()
         pred_vs = np.array(self.buf_values)
-
         target_vs = np.zeros_like(rewards)
         advs = np.zeros_like(rewards)
-
         v = last_v
         for i in reversed(range(rewards.shape[0])):
             v = rewards[i] + _lambda * v
             target_vs[i] = v
             adv = v - pred_vs[i]
             advs[i] = adv
-
         return target_vs, advs
 
     def gen_datas(self, last_v=0, _lambda=1.0):
         target_vs, advs = self.compute_values(last_v, _lambda)
         advs = (advs - advs.mean()) / advs.std()
         l, w = target_vs.shape
-
         datas = []
         for i in range(l):
             for j in range(w):
@@ -59,7 +55,6 @@ class Buffer:
                             log_prob=torch.tensor([log_prob]).float(),
                             adv=torch.tensor([adv]).float())
                 datas.append(data)
-
         return datas
 
     @staticmethod
