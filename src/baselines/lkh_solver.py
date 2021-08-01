@@ -2,16 +2,39 @@ import os
 import tempfile
 from subprocess import check_output
 
-import matplotlib.pyplot as plt
+from environments import VRPSolver
+from instances import VRPSolution, Route, VRPInstance
+from utils.io import write_vrp, read_solution, read_vrp
 
-from instances import generate_instance, VRPSolution, Route
-from utils.io import write_vrp, read_solution
 
-
-class LKHSolver:
-    def __init__(self, instance, executable):
-        self.instance = instance
+class LKHSolver(VRPSolver):
+    def __init__(self, executable: str):
+        super().__init__()
         self.executable = executable
+
+    def reset(self, instance: VRPInstance):
+        self.instance = instance
+
+    def solve(self, instance: VRPInstance, max_steps=None, time_limit=None):
+        assert time_limit is None, "LKH does not provide any time limitation parameter"
+        self.reset(instance)
+        if max_steps is None:
+            max_steps = self.instance.n_customers
+        with tempfile.TemporaryDirectory() as tempdir:
+            problem_filename = os.path.join(tempdir, "problem.vrp")
+            output_filename = os.path.join(tempdir, "output.tour")
+            param_filename = os.path.join(tempdir, "params.par")
+
+            write_vrp(self.instance, problem_filename)
+            params = {"PROBLEM_FILE": problem_filename,
+                      "OUTPUT_TOUR_FILE": output_filename,
+                      "MAX_TRIALS": max_steps}
+            self.write_lkh_par(param_filename, params)
+            check_output([self.executable, param_filename])
+            tours = read_solution(output_filename, self.instance.n_customers)
+            tours = [Route(t, self.instance) for t in tours]
+            self.solution = VRPSolution(self.instance, tours)
+            return self.solution
 
     @staticmethod
     def write_lkh_par(filename, parameters):
@@ -28,28 +51,9 @@ class LKHSolver:
                 else:
                     f.write("{} = {}\n".format(k, v))
 
-    def solve(self, max_trials=None):
-        if max_trials is None:
-            max_trials = self.instance.n_customers
-        with tempfile.TemporaryDirectory() as tempdir:
-            problem_filename = os.path.join(tempdir, "problem.vrp")
-            output_filename = os.path.join(tempdir, "output.tour")
-            param_filename = os.path.join(tempdir, "params.par")
-
-            write_vrp(self.instance, problem_filename)
-            params = {"PROBLEM_FILE": problem_filename,
-                      "OUTPUT_TOUR_FILE": output_filename,
-                      "MAX_TRIALS": max_trials}
-            self.write_lkh_par(param_filename, params)
-            check_output([self.executable, param_filename])
-            tours = read_solution(output_filename, self.instance.n_customers)
-            tours = [Route(t, self.instance) for t in tours]
-            return VRPSolution(self.instance, tours)
-
 
 if __name__ == "__main__":
-    inst = generate_instance(50)
-    lkhsolver = LKHSolver(inst, "../../executables/LKH")
-    sol = lkhsolver.solve()
-    inst.plot(sol)
-    plt.show()
+    inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
+    lkh_solver = LKHSolver("../../executables/LKH")
+    lkh_solver.solve(inst)
+    lkh_solver.render()

@@ -1,7 +1,7 @@
 import numpy as np
 
 from instances import VRPSolution
-from lns.destroy import DestroyProcedure
+from lns import DestroyProcedure
 
 
 class DestroyRandom(DestroyProcedure):

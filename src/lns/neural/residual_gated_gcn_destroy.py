@@ -6,10 +6,9 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 
-from instances import VRPSolution, VRPInstance
-from lns import RepairProcedure
-from lns.neural.neural_procedure import NeuralProcedure
-from lns.destroy import DestroyProcedure
+from instances import VRPSolution
+from lns import DestroyProcedure
+from lns.neural import NeuralProcedure
 
 
 class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
@@ -33,6 +32,9 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             # to_remove = [node for edge in to_remove for node in edge]
             # sol.destroy_nodes(to_remove)
 
+    def __call__(self, solution: VRPSolution):
+        self.multiple([solution])
+
     def _compute_features(self, instances, num_neighbors=-1) -> np.ndarray:
         if instances is None or instances == self.current_instances:
             return self.edges_features  # Features have already been computed
@@ -52,15 +54,3 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             edges_preds, _ = self.model.forward(self.edges, self.edges_values, self.nodes, self.nodes_values)
         prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1]
         return np.exp(prob_preds)
-
-    def __call__(self, solution: VRPSolution):
-        self.multiple([solution])
-
-    def train(self, train_instances: List[VRPInstance], val_instances: List[VRPInstance],
-              opposite_procedure: RepairProcedure, path: str, batch_size: int, epochs: int):
-        pass
-
-    def load_weights(self, checkpoint_path: str):
-        weights = torch.load(path, self.device)
-        self.model.load_state_dict(weights['model_state_dict'])
-        self.model.eval()

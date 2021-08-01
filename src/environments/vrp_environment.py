@@ -1,57 +1,43 @@
-import time
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Union, Optional
 
 from matplotlib import pyplot as plt
 
 from instances import VRPInstance, VRPSolution
 
+INF = 1e20  # Ensure compatibility with SCIP optimizer
 
-class VRPEnvironment(ABC):
+
+class VRPSolver(ABC):
     def __init__(self):
         self.instance = None
         self.solution = None
 
     @abstractmethod
-    def reset(self, instance: VRPInstance):
+    def reset(self, instance: Union[VRPInstance, List[VRPInstance]]):
         pass
 
     @abstractmethod
-    def step(self):
+    def solve(self,
+              instance: Union[VRPInstance, List[VRPInstance]],
+              time_limit: Optional[int],
+              max_steps: Optional[int]) -> Union[VRPSolution, List[VRPSolution]]:
         pass
 
     def render(self, ax=None):
-        self.instance.plot(solution=self.solution, ax=ax)
-        plt.show()
-
-    def solve(self, instance: VRPInstance, time_limit: int = 60) -> VRPSolution:
-        start_time = time.time()
-        self.reset(instance)
-        while time.time() - start_time < time_limit:
-            self.step()
-        self.solution.verify()
-        return self.solution
+        if type(self.instance) is VRPInstance:
+            self.instance.plot(solution=self.solution, ax=ax)
+            plt.show()
 
 
-class BatchVRPEnvironment(ABC):
+class VRPEnvironment(VRPSolver):
     def __init__(self):
-        self.instances = None
-        self.solutions = None
+        super().__init__()
+        self.current_cost = 0
         self.n_steps = 0
-
-    @abstractmethod
-    def reset(self, instances: List[VRPInstance]):
-        pass
+        self.max_steps = INF
+        self.time_limit = INF
 
     @abstractmethod
     def step(self):
         pass
-
-    def solve(self, instances: List[VRPInstance], time_limit: int = 60, max_steps: int = 1e20) -> List[VRPSolution]:
-        start_time = time.time()
-        self.reset(instances)
-        while self.n_steps < max_steps and time.time() - start_time < time_limit:
-            self.step()
-        for sol in self.solutions:
-            sol.verify()
-        return self.solutions

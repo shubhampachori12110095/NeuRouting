@@ -1,8 +1,4 @@
-import os
-import time
-from copy import deepcopy
-from math import ceil
-from typing import List, Optional
+from typing import List
 
 import torch
 import numpy as np
@@ -10,30 +6,21 @@ import numpy as np
 import torch.nn.functional as F
 from torch import optim
 
-from environments import BatchLNSEnvironment
-from instances import VRPSolution, VRPInstance
-from lns import LNSOperatorPair
+from instances import VRPSolution
+from lns import RepairProcedure
 from lns.initial import nearest_neighbor_solution
-from lns.destroy import DestroyProcedure
-from lns.repair import RepairProcedure
 from lns.neural import NeuralProcedure
 from lns.utils.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
-from utils.logging import Logger
 
 
-class ActorCriticRepair(RepairProcedure, NeuralProcedure):
-
-    def __init__(self, actor: VRPActorModel, critic: VRPCriticModel = None, device: str = 'cpu'):
-        self.actor = actor.to(device)
+class ActorCriticRepair(NeuralProcedure, RepairProcedure):
+    def __init__(self, actor: VRPActorModel, critic: VRPCriticModel = None, device='cpu', logger=None):
+        super(ActorCriticRepair, self).__init__(actor, device, logger)
         self.critic = critic.to(device) if critic is not None else critic
-        self.device = device
 
-    def __call__(self, partial_solution: VRPSolution):
-        self.multiple([partial_solution])
-
-    def multiple(self, partial_solutions: List[VRPSolution]):
-        neural_solutions = [VRPNeuralSolution(solution) for solution in partial_solutions]
+    def multiple(self, solutions: List[VRPSolution]):
+        neural_solutions = [VRPNeuralSolution(solution) for solution in solutions]
         emb_size = max([solution.min_nn_repr_size() for solution in neural_solutions])
         batch_size = len(neural_solutions)
 
@@ -48,7 +35,7 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
         static_input = torch.from_numpy(static_input).to(self.device).float()
         dynamic_input = torch.from_numpy(dynamic_input).to(self.device).long()
         # Assumes that the vehicle capacity is identical for all the incomplete solutions
-        capacity = partial_solutions[0].instance.capacity
+        capacity = solutions[0].instance.capacity
 
         cost_estimate = None
         if self.critic is not None:
@@ -57,112 +44,68 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
         tour_idx, tour_logp = self._actor_model_forward(neural_solutions, static_input, dynamic_input, capacity)
         return tour_idx, tour_logp, cost_estimate
 
-    def train(self,
-              opposite_procedure: DestroyProcedure,
-              train_instances: List[VRPInstance],
-              batch_size: int,
-              val_instances: List[VRPInstance],
-              val_steps: int,
-              val_interval: int,
-              checkpoint_path: str,
-              n_epochs: int = 1,
-              logger: Optional[Logger] = None,
-              log_interval: Optional[int] = None):
-        train_size = len(train_instances)
-        training_set = [nearest_neighbor_solution(inst) for inst in train_instances]
-        validation_set = val_instances
+    def __call__(self, solution: VRPSolution):
+        self.multiple([solution])
 
-        actor_optim = optim.Adam(self.actor.parameters(), lr=1e-4)
-        self.actor.train()
-        critic_optim = optim.Adam(self.critic.parameters(), lr=5e-4)
+    def _init_train(self):
+        self.actor_optim = optim.Adam(self.model.parameters(), lr=1e-4)
+        self.model.train()
+        self.critic_optim = optim.Adam(self.critic.parameters(), lr=5e-4)
         self.critic.train()
+        self.losses_actor = []
+        self.losses_critic = []
+        self.rewards = []
+        self.diversity_values = []
 
-        losses_actor, rewards, diversity_values, losses_critic = [], [], [], []
-        incumbent_cost = np.inf
+    def _train_step(self, opposite_procedure, train_batch):
+        batch_solutions = [nearest_neighbor_solution(inst) for inst in train_batch]
 
-        eval_env = BatchLNSEnvironment(batch_size, [LNSOperatorPair(opposite_procedure, self)])
+        opposite_procedure.multiple(batch_solutions)
+        costs_destroyed = [solution.cost() for solution in batch_solutions]
+        _, tour_logp, critic_est = self.multiple(batch_solutions)
+        costs_repaired = [solution.cost() for solution in batch_solutions]
 
-        n_batches = ceil(float(train_size) / batch_size)
-        for epoch in range(n_epochs):
-            for batch_idx in range(n_batches):
-                begin = batch_idx * batch_size
-                end = min((batch_idx + 1) * batch_size, train_size)
-                tr_solutions = [deepcopy(sol) for sol in training_set[begin:end]]
+        # Reward/Advantage computation
+        reward = np.array(costs_repaired) - np.array(costs_destroyed)
+        reward = torch.from_numpy(reward).float().to(self.device)
+        advantage = reward - critic_est
 
-                opposite_procedure.multiple(tr_solutions)
-                costs_destroyed = [solution.cost() for solution in tr_solutions]
-                _, tour_logp, critic_est = self.multiple(tr_solutions)
-                costs_repaired = [solution.cost() for solution in tr_solutions]
+        # Actor loss computation and backpropagation
+        max_grad_norm = 2.
+        actor_loss = torch.mean(advantage.detach() * tour_logp.sum(dim=1))
+        self.actor_optim.zero_grad()
+        actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
+        self.actor_optim.step()
 
-                # Reward/Advantage computation
-                reward = np.array(costs_repaired) - np.array(costs_destroyed)
-                reward = torch.from_numpy(reward).float().to(self.device)
-                advantage = reward - critic_est
+        # Critic loss computation and backpropagation
+        critic_loss = torch.mean(advantage ** 2)
+        self.critic_optim.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_grad_norm)
+        self.critic_optim.step()
 
-                # Actor loss computation and backpropagation
-                max_grad_norm = 2.
-                actor_loss = torch.mean(advantage.detach() * tour_logp.sum(dim=1))
-                actor_optim.zero_grad()
-                actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_grad_norm)
-                actor_optim.step()
+        self.rewards.append(torch.mean(reward.detach()).item())
+        self.losses_actor.append(torch.mean(actor_loss.detach()).item())
+        self.losses_critic.append(torch.mean(critic_loss.detach()).item())
 
-                # Critic loss computation and backpropagation
-                critic_loss = torch.mean(advantage ** 2)
-                critic_optim.zero_grad()
-                critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_grad_norm)
-                critic_optim.step()
+    def _train_info(self, epoch, batch_idx, log_interval):
+        mean_loss = np.mean(self.losses_actor[-log_interval:])
+        mean_critic_loss = np.mean(self.losses_critic[-log_interval:])
+        mean_reward = np.mean(self.rewards[-log_interval:])
+        return {"epoch": epoch + 1,
+                "batch_idx": batch_idx + 1,
+                "mean_reward": mean_reward,
+                "actor_loss": mean_loss,
+                "critic_loss": mean_critic_loss}
 
-                rewards.append(torch.mean(reward.detach()).item())
-                losses_actor.append(torch.mean(actor_loss.detach()).item())
-                losses_critic.append(torch.mean(critic_loss.detach()).item())
-
-                # Replace the solution of the training set instances with the new created solutions
-                for i in range(end - begin):
-                    training_set[batch_idx * batch_size + i] = tr_solutions[i]
-
-                # Log performance
-                if logger is not None and (batch_idx + 1) % log_interval == 0:
-                    mean_loss = np.mean(losses_actor[-log_interval:])
-                    mean_critic_loss = np.mean(losses_critic[-log_interval:])
-                    mean_reward = np.mean(rewards[-log_interval:])
-                    logger.log({"batch_idx": batch_idx + 1,
-                                "mean_reward": mean_reward,
-                                "actor_loss": mean_loss,
-                                "critic_loss": mean_critic_loss}, phase="train")
-
-                # Evaluate and save model every bunch of batches
-                if (batch_idx + 1) % val_interval == 0 or batch_idx == n_batches - 1:
-                    val_instances = [deepcopy(instance) for instance in validation_set]
-                    self.actor.eval()
-                    start_eval_time = time.time()
-                    solutions = eval_env.solve(val_instances, max_steps=val_steps, time_limit=3600)
-                    runtime = time.time() - start_eval_time
-                    self.actor.train()
-                    mean_cost = np.mean([sol.cost() for sol in solutions])
-
-                    if logger is not None:
-                        logger.log({"batch_idx": batch_idx + 1,
-                                    "mean_cost": mean_cost,
-                                    "runtime": runtime}, phase="val")
-
-                    if mean_cost < incumbent_cost:
-                        incumbent_cost = mean_cost
-                        model_data = {
-                            "batch_idx": batch_idx + 1,
-                            "actor": self.actor.state_dict(),
-                            "actor_optim": actor_optim.state_dict(),
-                            "critic": self.critic.state_dict(),
-                            "critic_optim": critic_optim.state_dict()
-                        }
-                        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-                        torch.save(model_data, checkpoint_path)
-
-    def load_weights(self, checkpoint_path: str):
-        model = torch.load(checkpoint_path, self.device)
-        self.actor.load_state_dict(model["actor"])
-        self.actor.eval()
+    def _ckpt_info(self, epoch, batch_idx) -> dict:
+        return {"epoch": epoch + 1,
+                "batch_idx": batch_idx + 1,
+                "parameters": self.model.state_dict(),
+                "actor_optim": self.actor_optim.state_dict(),
+                "critic": self.critic.state_dict(),
+                "critic_optim": self.critic_optim.state_dict()}
 
     def _actor_model_forward(self, incomplete_solutions, static_input, dynamic_input, vehicle_capacity):
         batch_size = static_input.shape[0]
@@ -178,7 +121,8 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
                 if origin_idx[i] == 0 and not solutions_repaired[i]:
                     origin_idx[i] = np.random.choice(solution.incomplete_nn_idx, 1).item()
 
-            mask = self._get_mask(origin_idx, dynamic_input, incomplete_solutions, vehicle_capacity).to(self.device).float()
+            mask = self._get_mask(origin_idx, dynamic_input, incomplete_solutions, vehicle_capacity).to(self.device)
+            mask = mask.float()
 
             # Rescale customer demand based on vehicle capacity
             dynamic_input_float = dynamic_input.float()
@@ -189,10 +133,10 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
             # Forward pass:
             # Returns a probability distribution over the point (tour end or depot) that origin should be connected to.
-            probs = self.actor.forward(static_input, dynamic_input, origin_static_input, origin_dynamic_input)
+            probs = self.model.forward(static_input, dynamic_input, origin_static_input, origin_dynamic_input)
             probs = F.softmax(probs + mask.log(), dim=1)  # Set prob of masked tour ends to zero
 
-            if self.actor.training:
+            if self.model.training:
                 m = torch.distributions.Categorical(probs)
 
                 ptr = m.sample()
@@ -272,8 +216,8 @@ class ActorCriticRepair(RepairProcedure, NeuralProcedure):
 
         mask = torch.from_numpy(mask)
 
-        origin_demands = dynamic_input[torch.arange(batch_size), origin_nn_input_idx, 0]
-        combined_demands = origin_demands.unsqueeze(1).expand(batch_size, dynamic_input.shape[1]) + dynamic_input[:, :, 0]
+        origin_demands = dynamic_input[torch.arange(batch_size), origin_nn_input_idx, 0].unsqueeze(1)
+        combined_demands = origin_demands.expand(batch_size, dynamic_input.shape[1]) + dynamic_input[:, :, 0]
         mask[combined_demands > capacity] = 0
 
         mask[:, 0] = 1  # Always allow to go to the depot

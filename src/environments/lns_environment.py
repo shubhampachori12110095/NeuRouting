@@ -1,166 +1,139 @@
 import math
 import time
 from copy import deepcopy
-from math import ceil
-from typing import List
-
 import numpy as np
 import torch
+from typing import List, Tuple
 
-from environments import VRPEnvironment, BatchVRPEnvironment
+from environments import VRPEnvironment
+from environments.vrp_environment import INF
 from instances import VRPInstance, VRPSolution
-from lns import LargeNeighborhoodSearch, LNSOperatorPair
+from lns import DestroyProcedure, RepairProcedure, LNSOperator
 from lns.initial import nearest_neighbor_solution
+
+EMA_ALPHA = 0.2  # Exponential Moving Average Alpha
+
+
+class LargeNeighborhoodSearch:
+    def __init__(self,
+                 operators: List[LNSOperator],
+                 initial=nearest_neighbor_solution,
+                 adaptive=False):
+        self.initial = initial
+        self.operators = operators
+        self.n_operators = len(operators)
+        self.adaptive = adaptive
+        self.performances = [np.inf] * self.n_operators if adaptive else None
+
+    def select_operator_pair(self) -> Tuple[DestroyProcedure, RepairProcedure, int]:
+        if self.adaptive:
+            idx = np.argmax(self.performances)
+        else:
+            idx = np.random.randint(0, self.n_operators)
+        return self.operators[idx].destroy, self.operators[idx].repair, idx
 
 
 class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
-    def __init__(self, operator_pairs: List[LNSOperatorPair], initial=nearest_neighbor_solution, adaptive=False):
-        super().__init__(operator_pairs, initial, adaptive)
-        self.cost = None
+    def __init__(self,
+                 operators: List[LNSOperator],
+                 neighborhood_size: int,
+                 initial=nearest_neighbor_solution,
+                 adaptive=False):
+        LargeNeighborhoodSearch.__init__(self, operators, initial, adaptive)
+        VRPEnvironment.__init__(self)
+        self.neighborhood_size = neighborhood_size
+        self.neighborhood = None
+        self.neighborhood_costs = None
 
     def reset(self, instance: VRPInstance):
         self.instance = instance
         self.solution = self.initial(instance)
-        self.cost = self.solution.cost()
-
-    def step(self) -> float:
-        prev_cost = self.cost
-        copy = deepcopy(self.solution)
-        destroy_operator, repair_operator, idx = self.select_operator_pair()
-        iter_start_time = time.time()
-        with torch.no_grad():
-            destroy_operator(self.solution)
-            repair_operator(self.solution)
-        lns_iter_duration = time.time() - iter_start_time
-
-        new_cost = self.solution.cost()
-        # If adaptive search is used, update performance scores
-        if self.adaptive:
-            delta = (prev_cost - new_cost) / lns_iter_duration
-            if self.performances[idx] == np.inf:
-                self.performances[idx] = delta
-            self.performances[idx] = self.performances[idx] * (1 - self.EMA_ALPHA) + delta * self.EMA_ALPHA
-
-        self.render()
-        if new_cost < prev_cost:
-            self.cost = new_cost
-        else:
-            self.solution = copy
-        return prev_cost - new_cost
-
-
-class BatchLNSEnvironment(LargeNeighborhoodSearch, BatchVRPEnvironment):
-
-    def __init__(self, batch_size: int, operator_pairs: List[LNSOperatorPair],
-                 initial=nearest_neighbor_solution, adaptive=False):
-        super().__init__(operator_pairs, initial, adaptive)
-        self.batch_size = batch_size
-        self.costs = None
-
-    def reset(self, instances: List[VRPInstance]):
-        self.instances = instances
-        self.solutions = [self.initial(inst) for inst in self.instances]
-        self.costs = [sol.cost() for sol in self.solutions]
+        self.current_cost = self.solution.cost()
+        self.max_steps = INF
+        self.time_limit = INF
         self.n_steps = 0
 
-    def step(self) -> float:
-        prev_costs = np.mean(self.costs)
-        copies = [deepcopy(sol) for sol in self.solutions]
-        n_solutions = len(self.solutions)
+    def step(self) -> dict:
+        current_cost = self.solution.cost()
 
-        destroy_procedure, repair_procedure, idx = self.select_operator_pair()
+        destroy_operator, repair_operator, idx = self.select_operator_pair()
 
         iter_start_time = time.time()
-        n_batches = ceil(float(n_solutions) / self.batch_size)
-        for i in range(n_batches):
-            with torch.no_grad():
-                begin = i * self.batch_size
-                end = min((i + 1) * self.batch_size, n_solutions)
-                destroy_procedure.multiple(self.solutions[begin:end])
-                repair_procedure.multiple(self.solutions[begin:end])
+        with torch.no_grad():
+            destroy_operator.multiple(self.neighborhood)
+            repair_operator.multiple(self.neighborhood)
         lns_iter_duration = time.time() - iter_start_time
+
+        self.neighborhood_costs = [sol.cost() for sol in self.neighborhood]
+        new_cost = min(self.neighborhood_costs)
+
+        # If adaptive search is used, update performance scores
+        if self.adaptive:
+            delta = (current_cost - new_cost) / lns_iter_duration
+            if self.performances[idx] == np.inf:
+                self.performances[idx] = delta
+            self.performances[idx] = self.performances[idx] * (1 - EMA_ALPHA) + delta * EMA_ALPHA
 
         self.n_steps += 1
 
-        for i in range(n_solutions):
-            cost = self.solutions[i].cost()
-            # Only "accept" improving solutions
-            if self.costs[i] < cost:
-                self.solutions[i] = copies[i]
-            else:
-                self.costs[i] = cost
+        return {"cost": new_cost}
 
-        # If adaptive search is used, update performance scores
-        if self.adaptive:
-            delta = (prev_costs - np.mean(self.costs)) / lns_iter_duration
-            if self.performances[idx] == np.inf:
-                self.performances[idx] = delta
-            self.performances[idx] = self.performances[idx] * (1 - self.EMA_ALPHA) + delta * self.EMA_ALPHA
-
-        return np.mean(prev_costs - self.costs)
-
-
-class SimAnnealingLNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
-    def __init__(self, operator_pairs: List[LNSOperatorPair], neighborhood_size,
-                 initial=nearest_neighbor_solution, n_reheating=5, reset_percentage=0.8):
-        super().__init__(operator_pairs, initial)
-        self.neighborhood_size = neighborhood_size
-        self.n_reheating = n_reheating
-        self.reset_percentage = reset_percentage
-        self.copies = None
-        self.costs = None
-
-    def reset(self, instance: VRPInstance):
-        self.instance = instance
-        self.solution = self.initial(instance)
-
-    def step(self):
-        # Set a certain percentage of the data/solutions in the envs to the last accepted solution
-        for i in range(int(self.reset_percentage * self.neighborhood_size)):
-            self.copies[i] = deepcopy(self.solution)
-
-        destroy_operator, repair_operator, _ = self.select_operator_pair()
-
-        with torch.no_grad():
-            destroy_operator.multiple(self.copies)
-            repair_operator.multiple(self.copies)
-
-        self.costs = [sol.cost() for sol in self.copies]
-
-    def solve(self, instance: VRPInstance, time_limit: int = 60) -> VRPSolution:
+    def solve(self, instance: VRPInstance, max_steps=None, time_limit=None) -> VRPSolution:
+        self.max_steps = max_steps if max_steps is not None else self.max_steps
+        self.time_limit = time_limit if time_limit is not None else self.time_limit
         start_time = time.time()
         self.reset(instance)
-        while time.time() - start_time < time_limit:
-            current_cost = self.solution.cost()
-
-            reheating_time = time.time()
+        while self.n_steps < max_steps and time.time() - start_time < time_limit:
             # Create a envs of copies of the same solution that can be repaired in parallel
-            self.copies = [deepcopy(self.solution) for _ in range(self.neighborhood_size)]
-
-            reheat = True
-            t_max, t_factor = 0, 0
-            # Repeat until the time limit of one reheating iteration is reached
-            while time.time() - reheating_time < time_limit / self.n_reheating:
-                self.step()
-                # Calculate the T_max and T_factor values for simulated annealing in the first iteration
-                if reheat:
-                    q75, q25 = np.percentile(self.costs, [75, 25])
-                    t_min = 10
-                    t_max = q75 - q25 + t_min
-                    t_factor = -math.log(t_max / t_min)
-                    reheat = False
-
-                min_cost = min(self.costs)
-
-                # Calculate simulated annealing temperature
-                temp = t_max * math.exp(t_factor * (time.time() - reheating_time) / (time_limit / self.n_reheating))
-
-                # Accept a solution if the acceptance criteria is fulfilled
-                if min_cost <= current_cost or np.random.rand() < math.exp(-(min(self.costs) - current_cost) / temp):
-                    min_idx = np.argmin(self.costs)
-                    self.solution = self.copies[min_idx]
-                    current_cost = min_cost
-                    self.solution.verify()
-                    self.render()
-
+            self.neighborhood = [deepcopy(self.solution) for _ in range(self.neighborhood_size)]
+            criteria = self.step()
+            if self.acceptance_criteria(criteria):
+                best_idx = np.argmin(self.neighborhood_costs)
+                self.solution = self.neighborhood[best_idx]
+                self.solution.verify()
         return self.solution
+
+    def acceptance_criteria(self, criteria: dict) -> bool:
+        # Accept a solution if the acceptance criteria is fulfilled
+        return criteria["cost"] < self.current_cost
+
+    def __deepcopy__(self, memo):
+        return LNSEnvironment(self.operators, self.neighborhood_size, self.initial, self.adaptive)
+
+
+class SimAnnealingLNSEnvironment(LNSEnvironment):
+    def __init__(self,
+                 operators: List[LNSOperator],
+                 neighborhood_size: int,
+                 initial=nearest_neighbor_solution,
+                 reset_percentage: float = 0.8,
+                 n_reheating=5):
+        super(SimAnnealingLNSEnvironment, self).__init__(operators, neighborhood_size, initial)
+        self.reset_percentage = reset_percentage
+        self.n_reheating = n_reheating
+
+    def step(self):
+        reheating_time = time.time()
+        reheat = True
+        t_max, t_factor, temp = 0, 0, 0
+        criteria = {}
+        # Repeat until the time limit of one reheating iteration is reached
+        while self.n_steps < self.max_steps and time.time() - reheating_time < self.time_limit / self.n_reheating:
+            # Set a certain percentage of the data/solutions in the envs to the last accepted solution
+            for i in range(int(self.reset_percentage * self.neighborhood_size)):
+                self.neighborhood[i] = deepcopy(self.solution)
+            criteria = super(SimAnnealingLNSEnvironment, self).step()
+            # Calculate the t_max and t_factor values for simulated annealing in the first iteration
+            if reheat:
+                q75, q25 = np.percentile(self.neighborhood_costs, [75, 25])
+                t_min = 10
+                t_max = q75 - q25 + t_min
+                t_factor = -math.log(t_max / t_min)
+                reheat = False
+            # Calculate simulated annealing temperature
+            temp = t_max * math.exp(t_factor * (time.time() - reheating_time) / (self.time_limit / self.n_reheating))
+        return {**criteria, "temperature": temp}
+
+    def acceptance_criteria(self, criteria: dict) -> bool:
+        cost, temp = criteria.values()
+        return cost < self.current_cost or np.random.rand() < math.exp(-(cost - self.current_cost) / temp)

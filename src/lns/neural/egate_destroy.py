@@ -1,34 +1,24 @@
-import os
-import time
 from copy import deepcopy
-from math import ceil
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 
 import numpy as np
 import torch
+from torch import optim
 from torch_geometric.data import Data, DataLoader
 
-from environments import BatchLNSEnvironment
-from instances import VRPSolution, VRPInstance
-from lns import LNSOperatorPair, nearest_neighbor_solution
-from lns.destroy import DestroyProcedure
-from lns.repair import RepairProcedure
+from instances import VRPSolution
+from lns.initial import nearest_neighbor_solution
+from lns import DestroyProcedure
 from lns.neural import NeuralProcedure
 from lns.utils import Buffer, RunningMeanStd
 from models import EgateModel
-from utils.logging import Logger
 
 
-class EgateDestroy(DestroyProcedure, NeuralProcedure):
-
-    def __init__(self, model: EgateModel, percentage: float, device="cpu"):
+class EgateDestroy(NeuralProcedure, DestroyProcedure):
+    def __init__(self, model: EgateModel, percentage: float, device="cpu", logger=None):
+        super().__init__(model, device, logger)
         assert 0 <= percentage <= 1
         self.percentage = percentage
-        self.model = model
-        self.device = device
-
-    def __call__(self, solution: VRPSolution):
-        self.multiple([solution])
 
     def multiple(self, solutions: List[VRPSolution]):
         n_nodes = solutions[0].instance.n_customers + 1
@@ -47,83 +37,79 @@ class EgateDestroy(DestroyProcedure, NeuralProcedure):
             to_remove = actions.squeeze().tolist()
             solutions[i].destroy_nodes(to_remove)
 
-    def train(self,
-              opposite_procedure: RepairProcedure,
-              train_instances: List[VRPInstance],
-              batch_size: int,
-              n_rollout: int,
-              val_instances: List[VRPInstance],
-              val_steps: int,
-              val_interval: int,
-              checkpoint_path: str,
-              n_epochs: int = 1,
-              logger: Optional[Logger] = None,
-              log_interval: Optional[int] = None):
+    def __call__(self, solution: VRPSolution):
+        self.multiple([solution])
 
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=3e-4)
+    def _init_train(self):
+        self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
+        self.model.train()
+        self.n_rollout = 1
+        self.rollout_steps = 1
+        self.alpha = 1.0
+        self.loss_vs = []
+        self.loss_ps = []
+        self.losses = []
+        self.entropies = []
 
-        neural_op_pair = LNSOperatorPair(self, opposite_procedure)
-        val_env = BatchLNSEnvironment(operator_pairs=[neural_op_pair], batch_size=batch_size)
+    def _train_step(self, opposite_procedure, train_batch):
+        batch_solutions = [nearest_neighbor_solution(inst) for inst in train_batch]
+        batch_size = len(train_batch)
+        # Rollout phase
+        all_datas = []
+        for i in range(self.n_rollout):
+            is_last = (i == self.n_rollout - 1)
+            rollout_solutions = [deepcopy(sol) for sol in batch_solutions]
+            datas, states = self._rollout(rollout_solutions, opposite_procedure, self.rollout_steps, is_last)
+            all_datas.extend(datas)
+            print(f"> Rollout {i + 1} completed successfully: {len(all_datas)} samples.")
 
-        incumbent_cost = np.inf
+        # Training phase
+        data_loader = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
 
-        train_size = len(train_instances)
-        n_batches = ceil(float(train_size) / batch_size)
-        for epoch in range(n_epochs):
-            for batch_idx in range(n_batches):
-                print(f"Batch {batch_idx + 1}:")
-                begin = batch_idx * batch_size
-                end = min((batch_idx + 1) * batch_size, train_size)
-                init_solutions = [nearest_neighbor_solution(inst) for inst in train_instances[begin:end]]
+        for i, batch in enumerate(data_loader):
+            batch = batch.to(self.device)
+            batch_size = batch.num_graphs
+            actions = batch.action.reshape((batch_size, -1))
+            log_p, v, entropy = self.model.evaluate(batch, actions)
+            self.entropies.append(entropy.mean().item())
 
-                # Rollout phase
-                rollout_steps = ceil(float(val_steps) / n_rollout)
-                print(rollout_steps)
-                all_datas = []
-                for i in range(n_rollout):
-                    is_last = (i == n_rollout - 1)
-                    batch_solutions = [deepcopy(sol) for sol in init_solutions]
-                    datas, states = self._rollout(batch_solutions, opposite_procedure, rollout_steps, is_last)
-                    all_datas.extend(datas)
-                    print(f"> Rollout {i + 1} completed successfully: {len(all_datas)} samples.")
+            target_vs = batch.v.squeeze(-1)
+            old_log_p = batch.log_prob.squeeze(-1)
+            adv = batch.adv.squeeze(-1)
 
-                # Training phase
-                data_loader = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
-                loss_v, loss_p, loss, entropy = self._train_step(data_loader, optimizer)
-                print("Training step performed!")
+            loss_v = ((v - target_vs) ** 2).mean()
 
-                if logger is not None and (batch_idx + 1) % log_interval == 0:
-                    logger.log({"batch_idx": batch_idx + 1,
-                                "loss_v": loss_v,
-                                "loss_p": loss_p,
-                                "loss": loss,
-                                "entropy": entropy}, phase="train")
+            ratio = torch.exp(log_p - old_log_p)
+            obj = ratio * adv
+            obj_clipped = ratio.clamp(1.0 - 0.2,
+                                      1.0 + 0.2) * adv
+            loss_p = -torch.min(obj, obj_clipped).mean()
+            loss = loss_p + self.alpha * loss_v
 
-                if (batch_idx + 1) % val_interval == 0 or batch_idx == n_batches - 1:
-                    self.model.eval()
-                    start_eval_time = time.time()
-                    val_env.solve(val_instances, max_steps=val_steps, time_limit=3600)
-                    runtime = time.time() - start_eval_time
-                    self.model.train()
-                    mean_cost = np.mean([sol.cost() for sol in val_env.solutions])
+            self.losses.append(loss.item())
+            self.loss_vs.append(loss_v.item())
+            self.loss_ps.append(loss_p.item())
 
-                    if logger is not None:
-                        logger.log({"batch_idx": batch_idx + 1,
-                                    "mean_cost": mean_cost,
-                                    "runtime": runtime}, phase="val")
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-                    if mean_cost < incumbent_cost:
-                        incumbent_cost = mean_cost
-                        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-                        model_data = {"batch_idx": batch_idx + 1,
-                                      "weights": self.model.state_dict(),
-                                      "optim": optimizer.state_dict()}
-                        torch.save(model_data, checkpoint_path)
+    def _train_info(self, epoch, batch_idx, log_interval) -> dict:
+        loss_v = np.mean(self.loss_vs[-log_interval:])
+        loss_p = np.mean(self.loss_ps[-log_interval:])
+        loss = np.mean(self.losses[-log_interval:])
+        entropy = np.mean(self.entropies[-log_interval:])
+        return {"batch_idx": batch_idx + 1,
+                "loss_v": loss_v,
+                "loss_p": loss_p,
+                "loss": loss,
+                "entropy": entropy}
 
-    def load_weights(self, checkpoint_path: str):
-        model_data = torch.load(checkpoint_path, self.device)
-        self.model.load_state_dict(model_data["weights"])
-        self.model.eval()
+    def _ckpt_info(self, epoch, batch_idx) -> dict:
+        return {"epoch": epoch + 1,
+                "batch_idx": batch_idx + 1,
+                "parameters": self.model.state_dict(),
+                "optim": self.optimizer.state_dict()}
 
     def _rollout(self, solutions, repair_procedure, n_steps, is_last):
         n_nodes = solutions[0].instance.n_customers
@@ -170,44 +156,6 @@ class EgateDestroy(DestroyProcedure, NeuralProcedure):
 
             datas = buffer.gen_datas(values, _lambda=0.99)
             return datas, (all_nodes, all_edges)
-
-    def _train_step(self, data_loader, opt, alpha=1.0):
-        self.model.train()
-
-        loss_vs = []
-        loss_ps = []
-        losses = []
-        entropies = []
-
-        for i, batch in enumerate(data_loader):
-            batch = batch.to(self.device)
-            batch_size = batch.num_graphs
-            actions = batch.action.reshape((batch_size, -1))
-            log_p, v, entropy = self.model.evaluate(batch, actions)
-            entropies.append(entropy.mean().item())
-
-            target_vs = batch.v.squeeze(-1)
-            old_log_p = batch.log_prob.squeeze(-1)
-            adv = batch.adv.squeeze(-1)
-
-            loss_v = ((v - target_vs) ** 2).mean()
-
-            ratio = torch.exp(log_p - old_log_p)
-            obj = ratio * adv
-            obj_clipped = ratio.clamp(1.0 - 0.2,
-                                      1.0 + 0.2) * adv
-            loss_p = -torch.min(obj, obj_clipped).mean()
-            loss = loss_p + alpha * loss_v
-
-            losses.append(loss.item())
-            loss_vs.append(loss_v.item())
-            loss_ps.append(loss_p.item())
-
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-
-        return np.mean(loss_vs), np.mean(loss_ps), np.mean(losses), np.mean(entropies)
 
     @staticmethod
     def features(solution: VRPSolution) -> Tuple[np.ndarray, np.ndarray]:
