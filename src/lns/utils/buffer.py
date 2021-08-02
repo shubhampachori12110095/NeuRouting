@@ -62,10 +62,11 @@ class Buffer:
         datas = []
         n_graphs = len(_nodes)
         batch_size = batch_size if batch_size is not None else n_graphs
+        n_nodes = len(_nodes[0])
+        edge_index = torch.LongTensor([[i, j] for i in range(n_nodes) for j in range(n_nodes)]).T
         for i in range(n_graphs):
             nodes = _nodes[i]
             edges = _edges[i]
-            edge_index = torch.LongTensor([[i, j] for i in range(len(nodes)) for j in range(len(nodes))]).T
             data = Data(x=torch.from_numpy(nodes).float(), edge_index=edge_index,
                         edge_attr=torch.from_numpy(edges).float())
             datas.append(data)

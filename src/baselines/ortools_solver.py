@@ -1,6 +1,3 @@
-from typing import Union, List
-
-from matplotlib import pyplot as plt
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 from environments import VRPSolver

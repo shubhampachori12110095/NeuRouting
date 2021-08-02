@@ -15,15 +15,15 @@ if __name__ == "__main__":
     print(f"Using {device} for training.")
 
     # Define the parameters needed for the training
-    n_train_instances = 100000
+    n_train_instances = 10000
     n_val_instances = 100
     n_customers = 50
     destroy_percentage = 0.15
     batch_size = 64
     n_epochs = 1
-    log_interval = 4
-    val_interval = 16
-    run_name = f"n_{n_customers}_destroy_point_{destroy_percentage}_repair_neural.pt"
+    log_interval = 5
+    val_interval = 20
+    ckpt_file = f"n_{n_customers}_destroy_point_{destroy_percentage}_repair_neural.pt"
 
     train_instances = generate_multiple_instances(n_instances=n_train_instances, n_customers=n_customers, seed=42)
     val_instances = generate_multiple_instances(n_instances=n_val_instances, n_customers=n_customers, seed=73)
@@ -42,7 +42,7 @@ if __name__ == "__main__":
                            val_instances=val_instances,
                            batch_size=batch_size,
                            n_epochs=n_epochs,
-                           ckpt_path=f'./pretrained/{run_name}',
+                           ckpt_path=f'./pretrained/{ckpt_file}',
                            log_interval=log_interval,
                            val_interval=val_interval,
                            val_steps=n_customers)

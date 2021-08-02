@@ -1,4 +1,3 @@
-import math
 import time
 from copy import deepcopy
 import numpy as np
@@ -6,7 +5,7 @@ import torch
 from typing import List, Tuple
 
 from environments import VRPEnvironment
-from environments.vrp_environment import INF
+from environments.vrp_env import INF
 from instances import VRPInstance, VRPSolution
 from lns import DestroyProcedure, RepairProcedure, LNSOperator
 from lns.initial import nearest_neighbor_solution
@@ -99,41 +98,3 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
 
     def __deepcopy__(self, memo):
         return LNSEnvironment(self.operators, self.neighborhood_size, self.initial, self.adaptive)
-
-
-class SimAnnealingLNSEnvironment(LNSEnvironment):
-    def __init__(self,
-                 operators: List[LNSOperator],
-                 neighborhood_size: int,
-                 initial=nearest_neighbor_solution,
-                 reset_percentage: float = 0.8,
-                 n_reheating=5):
-        super(SimAnnealingLNSEnvironment, self).__init__(operators, neighborhood_size, initial)
-        self.reset_percentage = reset_percentage
-        self.n_reheating = n_reheating
-
-    def step(self):
-        reheating_time = time.time()
-        reheat = True
-        t_max, t_factor, temp = 0, 0, 0
-        criteria = {}
-        # Repeat until the time limit of one reheating iteration is reached
-        while self.n_steps < self.max_steps and time.time() - reheating_time < self.time_limit / self.n_reheating:
-            # Set a certain percentage of the data/solutions in the envs to the last accepted solution
-            for i in range(int(self.reset_percentage * self.neighborhood_size)):
-                self.neighborhood[i] = deepcopy(self.solution)
-            criteria = super(SimAnnealingLNSEnvironment, self).step()
-            # Calculate the t_max and t_factor values for simulated annealing in the first iteration
-            if reheat:
-                q75, q25 = np.percentile(self.neighborhood_costs, [75, 25])
-                t_min = 10
-                t_max = q75 - q25 + t_min
-                t_factor = -math.log(t_max / t_min)
-                reheat = False
-            # Calculate simulated annealing temperature
-            temp = t_max * math.exp(t_factor * (time.time() - reheating_time) / (self.time_limit / self.n_reheating))
-        return {**criteria, "temperature": temp}
-
-    def acceptance_criteria(self, criteria: dict) -> bool:
-        cost, temp = criteria.values()
-        return cost < self.current_cost or np.random.rand() < math.exp(-(cost - self.current_cost) / temp)

@@ -4,7 +4,7 @@ from typing import Tuple, List
 import numpy as np
 import torch
 from torch import optim
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import DataLoader
 
 from instances import VRPSolution
 from lns.initial import nearest_neighbor_solution
@@ -39,8 +39,8 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
     def _init_train(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
         self.model.train()
-        self.n_rollout = 1
-        self.rollout_steps = 2
+        self.n_rollout = 2
+        self.rollout_steps = 5
         self.alpha = 1.0
         self.loss_vs = []
         self.loss_ps = []
@@ -53,11 +53,12 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         # Rollout phase
         all_datas = []
         for i in range(self.n_rollout):
+            print(f"> Rollout {i + 1}:")
             is_last = (i == self.n_rollout - 1)
             rollout_solutions = [deepcopy(sol) for sol in batch_solutions]
             datas, states = self._rollout(rollout_solutions, opposite_procedure, self.rollout_steps, is_last)
             all_datas.extend(datas)
-            print(f"> Rollout {i + 1} completed successfully: {len(all_datas)} samples.")
+            print(f"{len(all_datas)} samples currently present.")
 
         # Training phase
         data_loader = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
@@ -121,13 +122,13 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
                 data_loader = buffer.create_data(all_nodes, all_edges, batch_size=len(solutions))
                 data = list(data_loader)[0].to(self.device)
                 actions, log_p, values, entropy = self.model(data, n_remove)
-                new_all_nodes, new_all_edges, rewards = [], [], []
                 for sol, to_remove in zip(solutions, actions):
                     prev_cost = sol.cost()
                     sol.destroy_nodes(to_remove)
 
                 repair_procedure.multiple(solutions)
 
+                new_all_nodes, new_all_edges, rewards = [], [], []
                 for sol in solutions:
                     sol.verify()
                     new_cost = sol.cost()
@@ -143,10 +144,12 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
 
                 buffer.obs(all_nodes, all_edges, actions.cpu().numpy(), rewards, log_p.cpu().numpy(), values.cpu().numpy())
                 all_nodes, all_edges = new_all_nodes, new_all_edges
+                print(f"\t* Step {i + 1} completed.")
 
             if not is_last:
-                data = buffer.create_data(all_nodes, all_edges).to(self.device)
-                actions, log_p, values, entropy = self.model(data, n_remove)
+                data_loader = buffer.create_data(all_nodes, all_edges)
+                data = list(data_loader)[0].to(self.device)
+                _, _, values, _ = self.model(data, n_remove)
                 values = values.cpu().numpy()
             else:
                 values = 0

@@ -1,3 +1,3 @@
-from .or_tools_vrp import OrToolsSolver
-from .scip_vrp import SCIPSolver
+from .ortools_solver import OrToolsSolver
+from .scip_solver import SCIPSolver
 from .lkh_solver import LKHSolver
