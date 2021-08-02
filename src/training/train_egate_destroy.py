@@ -15,14 +15,14 @@ if __name__ == "__main__":
     print(f"Using {device} for training.")
 
     # Define the parameters needed for the training
-    n_train_instances = 10000
-    n_val_instances = 100
+    n_train_instances = 10
+    n_val_instances = 1
     n_customers = 50
     destroy_percentage = 0.15
-    batch_size = 64
+    batch_size = 4
     n_epochs = 1
-    log_interval = 4
-    val_interval = 16
+    log_interval = 1
+    val_interval = 2
     run_name = f"n_{n_customers}_destroy_egate_{destroy_percentage}_repair_scip.pt"
 
     train_instances = generate_multiple_instances(n_instances=n_train_instances, n_customers=n_customers, seed=42)

@@ -33,17 +33,17 @@ class NeuralProcedure(LNSProcedure):
               val_instances: Optional[List[VRPInstance]] = None,
               val_steps: Optional[int] = None,
               val_interval: Optional[int] = None):
+        run_name = ntpath.basename(ckpt_path)
+        run_name = run_name[:run_name.rfind('.')]
         if self.logger is not None:
-            self.logger.new_run(run_name=os.path.basename(ckpt_path))
+            self.logger.new_run(run_name=run_name)
 
         incumbent_cost = np.inf
         train_size = len(train_instances)
         n_batches = ceil(float(train_size) / batch_size)
 
         start_time = time.time()
-        name = ntpath.basename(ckpt_path)
-        name = name[:name.rfind('.')]
-        print(f"Starting {name} training...")
+        print(f"Starting {run_name} training...")
         self._init_train()
         for epoch in range(n_epochs):
             for batch_idx in range(n_batches):

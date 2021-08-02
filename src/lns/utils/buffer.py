@@ -58,9 +58,10 @@ class Buffer:
         return datas
 
     @staticmethod
-    def create_data(_nodes, _edges):
+    def create_data(_nodes, _edges, batch_size=None):
         datas = []
         n_graphs = len(_nodes)
+        batch_size = batch_size if batch_size is not None else n_graphs
         for i in range(n_graphs):
             nodes = _nodes[i]
             edges = _edges[i]
@@ -68,5 +69,4 @@ class Buffer:
             data = Data(x=torch.from_numpy(nodes).float(), edge_index=edge_index,
                         edge_attr=torch.from_numpy(edges).float())
             datas.append(data)
-        dl = DataLoader(datas, batch_size=n_graphs)
-        return list(dl)[0]
+        return DataLoader(datas, batch_size=batch_size)

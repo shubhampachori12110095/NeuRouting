@@ -23,19 +23,15 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
     def multiple(self, solutions: List[VRPSolution]):
         n_nodes = solutions[0].instance.n_customers + 1
         n_remove = int(n_nodes * self.percentage)
-        edge_index = torch.LongTensor([[i, j] for i in range(n_nodes) for j in range(n_nodes)]).T
-        states = [self.features(sol) for sol in solutions]
-        dataset = []
-        for nodes, edges in states:
-            data = Data(x=torch.from_numpy(nodes).float(),
-                        edge_index=edge_index,
-                        edge_attr=torch.from_numpy(edges).float())
-            dataset.append(data)
-        data_loader = DataLoader(dataset)
-        for i, batch in enumerate(data_loader):
+        nodes, edges = zip(*[self.features(sol) for sol in solutions])
+        data_loader = Buffer.create_data(nodes, edges)
+        for batch in data_loader:
+            batch = batch.to(self.device)
             actions, log_p, values, entropy = self.model(batch, n_remove)
             to_remove = actions.squeeze().tolist()
-            solutions[i].destroy_nodes(to_remove)
+        assert len(to_remove) == len(solutions), "Each solution must have a corresponding list of nodes to remove."
+        for sol, remove in zip(solutions, to_remove):
+            sol.destroy_nodes(remove)
 
     def __call__(self, solution: VRPSolution):
         self.multiple([solution])
@@ -44,7 +40,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
         self.model.train()
         self.n_rollout = 1
-        self.rollout_steps = 1
+        self.rollout_steps = 2
         self.alpha = 1.0
         self.loss_vs = []
         self.loss_ps = []
@@ -66,7 +62,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         # Training phase
         data_loader = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
 
-        for i, batch in enumerate(data_loader):
+        for batch in data_loader:
             batch = batch.to(self.device)
             batch_size = batch.num_graphs
             actions = batch.action.reshape((batch_size, -1))
@@ -122,7 +118,8 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
             _sum = 0
             _entropy = []
             for i in range(n_steps):
-                data = buffer.create_data(all_nodes, all_edges).to(self.device)
+                data_loader = buffer.create_data(all_nodes, all_edges, batch_size=len(solutions))
+                data = list(data_loader)[0].to(self.device)
                 actions, log_p, values, entropy = self.model(data, n_remove)
                 new_all_nodes, new_all_edges, rewards = [], [], []
                 for sol, to_remove in zip(solutions, actions):

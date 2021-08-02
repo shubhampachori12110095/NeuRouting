@@ -15,7 +15,7 @@ if __name__ == "__main__":
     print(f"Using {device} for training.")
 
     # Define the parameters needed for the training
-    n_train_instances = 10000
+    n_train_instances = 100000
     n_val_instances = 100
     n_customers = 50
     destroy_percentage = 0.15
