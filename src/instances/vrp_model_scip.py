@@ -59,6 +59,10 @@ class VRPModelSCIP(Model):
         self.setIntParam('randomization/permutationseed', seed)
         self.setIntParam('randomization/randomseedshift', seed)
 
+        # presolving
+        self.setIntParam('presolving/maxrestarts', 0)
+        self.setIntParam('presolving/maxrounds', 0)
+
         # disable separating (cuts)
         self.setIntParam('separating/maxroundsroot', 0)
         self.setSeparating(pyscipopt.SCIP_PARAMSETTING.OFF)
@@ -67,6 +71,8 @@ class VRPModelSCIP(Model):
 
         # disable pscost for branching.
         self.setParam('branching/pscost/priority', 1e8)
+
+        self.hideOutput()
 
         if heuristics is None:
             return

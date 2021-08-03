@@ -34,23 +34,20 @@ class LargeNeighborhoodSearch:
 
 class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
     def __init__(self,
+                 name: str,
                  operators: List[LNSOperator],
                  neighborhood_size: int,
                  initial=nearest_neighbor_solution,
                  adaptive=False):
         LargeNeighborhoodSearch.__init__(self, operators, initial, adaptive)
-        VRPEnvironment.__init__(self)
+        VRPEnvironment.__init__(self, name)
         self.neighborhood_size = neighborhood_size
         self.neighborhood = None
         self.neighborhood_costs = None
 
     def reset(self, instance: VRPInstance):
-        self.instance = instance
+        super(LNSEnvironment, self).reset(instance)
         self.solution = self.initial(instance)
-        self.current_cost = self.solution.cost()
-        self.max_steps = INF
-        self.time_limit = INF
-        self.n_steps = 0
 
     def step(self) -> dict:
         current_cost = self.solution.cost()
@@ -94,7 +91,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
 
     def acceptance_criteria(self, criteria: dict) -> bool:
         # Accept a solution if the acceptance criteria is fulfilled
-        return criteria["cost"] < self.current_cost
+        return criteria["cost"] < self.solution.cost()
 
     def __deepcopy__(self, memo):
-        return LNSEnvironment(self.operators, self.neighborhood_size, self.initial, self.adaptive)
+        return LNSEnvironment(self.name, self.operators, self.neighborhood_size, self.initial, self.adaptive)

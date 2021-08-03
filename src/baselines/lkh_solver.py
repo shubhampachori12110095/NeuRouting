@@ -9,14 +9,14 @@ from utils.io import write_vrp, read_solution, read_vrp
 
 class LKHSolver(VRPSolver):
     def __init__(self, executable: str):
-        super().__init__()
+        super().__init__("LKH3")
         self.executable = executable
 
     def reset(self, instance: VRPInstance):
         self.instance = instance
 
     def solve(self, instance: VRPInstance, max_steps=None, time_limit=None):
-        assert time_limit is None, "LKH does not provide any time limitation parameter"
+        # assert time_limit is None, "LKH does not provide any time limitation parameter"
         self.reset(instance)
         if max_steps is None:
             max_steps = self.instance.n_customers

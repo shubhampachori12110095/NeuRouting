@@ -12,12 +12,13 @@ from lns.initial import nearest_neighbor_solution
 
 class SimAnnealingLNSEnvironment(LNSEnvironment):
     def __init__(self,
+                 name: str,
                  operators: List[LNSOperator],
                  neighborhood_size: int,
                  initial=nearest_neighbor_solution,
                  reset_percentage: float = 0.8,
                  n_reheating=5):
-        super(SimAnnealingLNSEnvironment, self).__init__(operators, neighborhood_size, initial)
+        super(SimAnnealingLNSEnvironment, self).__init__(name, operators, neighborhood_size, initial)
         self.reset_percentage = reset_percentage
         self.n_reheating = n_reheating
 
@@ -44,5 +45,6 @@ class SimAnnealingLNSEnvironment(LNSEnvironment):
         return {**criteria, "temperature": temp}
 
     def acceptance_criteria(self, criteria: dict) -> bool:
+        current_cost = self.solution.cost()
         cost, temp = criteria.values()
-        return cost < self.current_cost or np.random.rand() < math.exp(-(cost - self.current_cost) / temp)
+        return cost < current_cost or np.random.rand() < math.exp(-(cost - current_cost) / temp)

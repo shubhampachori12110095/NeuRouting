@@ -5,11 +5,12 @@ from matplotlib import pyplot as plt
 
 from instances import VRPInstance, VRPSolution
 
-INF = 1e20  # Ensure compatibility with SCIP optimizer
+INF = 1e20  # Ensure compatibility with SCIP optimizer maximum time limit
 
 
 class VRPSolver(ABC):
-    def __init__(self):
+    def __init__(self, name: str):
+        self.name = name
         self.instance = None
         self.solution = None
 
@@ -31,9 +32,14 @@ class VRPSolver(ABC):
 
 
 class VRPEnvironment(VRPSolver):
-    def __init__(self):
-        super().__init__()
-        self.current_cost = 0
+    def __init__(self, name):
+        super().__init__(name)
+        self.n_steps = 0
+        self.max_steps = INF
+        self.time_limit = INF
+
+    def reset(self, instance):
+        self.instance = instance
         self.n_steps = 0
         self.max_steps = INF
         self.time_limit = INF

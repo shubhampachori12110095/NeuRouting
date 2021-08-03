@@ -8,7 +8,7 @@ from utils.io import read_vrp, GRID_DIM
 
 class OrToolsSolver(VRPSolver):
     def __init__(self):
-        super().__init__()
+        super().__init__("OR-Tools")
         self._data = None
         self._manager = None
         self._routing = None
