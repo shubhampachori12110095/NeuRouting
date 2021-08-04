@@ -5,7 +5,6 @@ import torch
 from typing import List, Tuple
 
 from environments import VRPEnvironment
-from environments.vrp_env import INF
 from instances import VRPInstance, VRPSolution
 from lns import DestroyProcedure, RepairProcedure, LNSOperator
 from lns.initial import nearest_neighbor_solution
@@ -34,11 +33,11 @@ class LargeNeighborhoodSearch:
 
 class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
     def __init__(self,
-                 name: str,
                  operators: List[LNSOperator],
                  neighborhood_size: int,
                  initial=nearest_neighbor_solution,
-                 adaptive=False):
+                 adaptive=False,
+                 name="LNS"):
         LargeNeighborhoodSearch.__init__(self, operators, initial, adaptive)
         VRPEnvironment.__init__(self, name)
         self.neighborhood_size = neighborhood_size
@@ -94,4 +93,4 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         return criteria["cost"] < self.solution.cost()
 
     def __deepcopy__(self, memo):
-        return LNSEnvironment(self.name, self.operators, self.neighborhood_size, self.initial, self.adaptive)
+        return LNSEnvironment(self.operators, self.neighborhood_size, self.initial, self.adaptive, self.name)

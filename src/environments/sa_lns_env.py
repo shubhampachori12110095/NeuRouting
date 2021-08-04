@@ -12,13 +12,14 @@ from lns.initial import nearest_neighbor_solution
 
 class SimAnnealingLNSEnvironment(LNSEnvironment):
     def __init__(self,
-                 name: str,
                  operators: List[LNSOperator],
                  neighborhood_size: int,
                  initial=nearest_neighbor_solution,
                  reset_percentage: float = 0.8,
-                 n_reheating=5):
-        super(SimAnnealingLNSEnvironment, self).__init__(name, operators, neighborhood_size, initial)
+                 n_reheating: int = 5,
+                 adaptive=False,
+                 name="SA LNS"):
+        super(SimAnnealingLNSEnvironment, self).__init__(operators, neighborhood_size, initial, adaptive, name)
         self.reset_percentage = reset_percentage
         self.n_reheating = n_reheating
 

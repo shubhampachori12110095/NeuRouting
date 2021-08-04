@@ -10,7 +10,7 @@ from instances import VRPSolution
 from lns import RepairProcedure
 from lns.initial import nearest_neighbor_solution
 from lns.neural import NeuralProcedure
-from lns.utils.vrp_neural_solution import VRPNeuralSolution
+from utils.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
 
 

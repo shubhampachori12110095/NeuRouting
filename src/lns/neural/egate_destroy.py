@@ -10,7 +10,8 @@ from instances import VRPSolution
 from lns.initial import nearest_neighbor_solution
 from lns import DestroyProcedure
 from lns.neural import NeuralProcedure
-from lns.utils import Buffer, RunningMeanStd
+from utils.buffer import Buffer
+from utils.running_mean_std import RunningMeanStd
 from models import EgateModel
 
 

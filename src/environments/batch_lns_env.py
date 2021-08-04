@@ -10,7 +10,7 @@ from instances import VRPInstance, VRPSolution
 
 class BatchLNSEnvironment(VRPSolver):
     def __init__(self, base_env: LNSEnvironment):
-        super().__init__()
+        super().__init__("Batch LNS")
         self._base_env = base_env
         self.envs = None
 

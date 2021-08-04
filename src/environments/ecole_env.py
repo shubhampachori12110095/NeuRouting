@@ -1,4 +1,5 @@
 import re
+import time
 from abc import abstractmethod
 
 import ecole
@@ -6,15 +7,17 @@ import numpy as np
 import torch
 from ecole.environment import Branching
 from ecole.observation import NodeBipartite
+from matplotlib import pyplot as plt
 
 from environments import VRPEnvironment
 from instances import VRPInstance, VRPSolution, VRPModelSCIP
 from models.gcn import GCNModel
+from utils.io import read_vrp
 
 
 class VRPInfo:
     def before_reset(self, model: ecole.scip.Model) -> None:
-        return
+        pass
 
     def extract(self, model: ecole.scip.Model, done: bool):
         scip_model = model.as_pyscipopt()
@@ -42,14 +45,15 @@ class EcoleEnvironment(VRPEnvironment):
         pass
 
     def solve(self, instance: VRPInstance, time_limit=None, max_steps=None) -> VRPSolution:
+        self.obs, self.action_set, self.reward, done, edges = self.reset(instance)
+        # self.solution = VRPSolution.from_edges(self.instance, edges)
+
         self.max_steps = max_steps if max_steps is not None else self.max_steps
         self.time_limit = time_limit if time_limit is not None else self.time_limit
-        self.scip_model.set_param("limits/time", self.max_steps)
-        self.obs, self.action_set, self.reward, done, edges = self.reset(instance)
-        self.solution = VRPSolution.from_edges(self.instance, edges)
-        while not done and self.n_steps < self.max_steps:
+        start_time = time.time()
+        while not done and self.n_steps < self.max_steps and time.time() - start_time < self.time_limit:
             self.obs, self.action_set, self.reward, done, edges = self.step()
-            self.solution = VRPSolution.from_edges(self.instance, edges)
+            # self.solution = VRPSolution.from_edges(self.instance, edges)
             self.n_steps += 1
         return self.solution
 
@@ -71,3 +75,11 @@ class GCNEcoleEnvironment(EcoleEnvironment):
             logits = self.model(*observation)
             action = self.action_set[logits[self.action_set.astype(np.int64)].argmax()]
             return self.env.step(action)
+
+
+if __name__ == "__main__":
+    inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
+    scipsolver = GCNEcoleEnvironment(GCNModel())
+    sol = scipsolver.solve(inst, time_limit=10, max_steps=100)
+    inst.plot(sol)
+    plt.show()

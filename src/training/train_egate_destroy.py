@@ -34,7 +34,7 @@ if __name__ == "__main__":
     logger = MultipleLogger(loggers=[ConsoleLogger(),
                                      WandBLogger(model=model)])
 
-    destroy_procedure = EgateDestroy(model, percentage=destroy_percentage, device=device, logger=ConsoleLogger())
+    destroy_procedure = EgateDestroy(model, percentage=destroy_percentage, device=device, logger=logger)
     repair_procedure = SCIPRepair()
 
     destroy_procedure.train(opposite_procedure=repair_procedure,
