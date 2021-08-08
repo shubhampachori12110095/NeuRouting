@@ -30,9 +30,9 @@ class BipartiteNodeData(Data):
         for those entries (edge index, candidates) for which this is not obvious.
         """
         if key == 'edge_index':
-            return torch.tensor([[self.constraint_features.size()], [self.variable_features.size()]])
+            return torch.tensor([[self.constraint_features.size(0)], [self.variable_features.size(0)]])
         elif key == 'candidates':
-            return self.variable_features.size()
+            return self.variable_features.size(0)
         else:
             return super().__inc__(key, value)
 
@@ -43,21 +43,23 @@ class GraphDataset(Dataset):
     It can be used in turn by the data loaders provided by pytorch geometric.
     """
 
-    def __init__(self, sample_files):
+    def __init__(self, instance_files, n_samples_instance):
         super().__init__(root=None, transform=None, pre_transform=None)
-        self.sample_files = sample_files
+        self.instance_files = instance_files
+        self.n_samples_instance = n_samples_instance
 
     def len(self):
-        return len(self.sample_files)
+        return len(self.instance_files * self.n_samples_instance)
 
     def get(self, index):
         """
         This method loads a node bipartite graph observation as saved on the disk during data collection.
         """
-        with gzip.open(self.sample_files[index], 'rb') as f:
-            sample = pickle.load(f)
-
-        sample_observation, sample_action, sample_action_set, sample_scores = sample
+        instance_idx = index // self.n_samples_instance
+        sample_idx = index % self.n_samples_instance
+        with gzip.open(self.instance_files[instance_idx], 'rb') as f:
+            samples = pickle.load(f)
+        sample_observation, sample_action, sample_action_set, sample_scores = samples[sample_idx]
 
         # We note on which variables we were allowed to branch, the scores as well as the choice
         # taken by strong branching (relative to the candidates)

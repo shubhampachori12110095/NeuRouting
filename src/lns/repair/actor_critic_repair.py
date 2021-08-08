@@ -7,9 +7,8 @@ import torch.nn.functional as F
 from torch import optim
 
 from instances import VRPSolution
-from lns import RepairProcedure
+from lns import RepairProcedure, NeuralProcedure
 from lns.initial import nearest_neighbor_solution
-from lns.neural import NeuralProcedure
 from utils.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
 

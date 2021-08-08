@@ -4,7 +4,7 @@ import torch
 sys.path.append("src")
 
 from generators import generate_multiple_instances
-from lns.neural import EgateDestroy
+from lns.destroy import EgateDestroy
 from lns.repair import SCIPRepair
 from models.egate import EgateModel
 from utils.logging import MultipleLogger, ConsoleLogger, WandBLogger

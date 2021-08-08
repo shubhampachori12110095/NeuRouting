@@ -24,6 +24,8 @@ class SCIPRepair(RepairProcedure):
     def multiple(self, partial_solutions: List[VRPSolution]):
         with Pool(os.cpu_count()) as pool:
             results = pool.map(self, partial_solutions)
+            pool.close()
+            pool.join()
         for sol, res in zip(partial_solutions, results):
             sol.routes = res.routes
 

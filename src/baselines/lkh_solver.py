@@ -16,7 +16,7 @@ class LKHSolver(VRPSolver):
         self.instance = instance
 
     def solve(self, instance: VRPInstance, max_steps=None, time_limit=None):
-        # assert time_limit is None, "LKH does not provide any time limitation parameter"
+        # assert time_limit is None, "LKH3 does not provide any time limitation parameter"
         self.reset(instance)
         if max_steps is None:
             max_steps = self.instance.n_customers
@@ -54,6 +54,6 @@ class LKHSolver(VRPSolver):
 
 if __name__ == "__main__":
     inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
-    lkh_solver = LKHSolver("../../executables/LKH")
+    lkh_solver = LKHSolver("../../executables/LKH3")
     lkh_solver.solve(inst)
     lkh_solver.render()

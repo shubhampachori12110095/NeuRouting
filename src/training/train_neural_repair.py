@@ -4,7 +4,7 @@ import torch
 sys.path.append("src")
 
 from lns.destroy import DestroyPointBased
-from lns.neural import ActorCriticRepair
+from lns.repair import ActorCriticRepair
 from generators import generate_multiple_instances
 from models import VRPActorModel, VRPCriticModel
 from utils.logging import MultipleLogger, ConsoleLogger, WandBLogger

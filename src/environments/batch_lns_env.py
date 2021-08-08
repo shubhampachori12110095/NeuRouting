@@ -4,7 +4,8 @@ from typing import List
 
 import numpy as np
 
-from environments import LNSEnvironment, VRPSolver
+from environments.vrp_env import VRPSolver
+from environments.lns_env import LNSEnvironment
 from instances import VRPInstance, VRPSolution
 
 

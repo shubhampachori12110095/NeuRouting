@@ -9,9 +9,10 @@ import numpy as np
 import torch
 from torch import nn
 
-from environments import LNSEnvironment, BatchLNSEnvironment
-from instances import VRPInstance
-from lns import DestroyProcedure, RepairProcedure, LNSOperator, LNSProcedure
+from environments.lns_env import LNSEnvironment
+from environments.batch_lns_env import BatchLNSEnvironment
+from instances import VRPInstance, VRPSolution
+from lns import LNSProcedure, RepairProcedure, DestroyProcedure, LNSOperator
 from utils.logging import Logger
 
 
@@ -30,9 +31,9 @@ class NeuralProcedure(LNSProcedure):
               ckpt_path: str,
               log_interval: int = 1,
               val_instances: Optional[List[VRPInstance]] = None,
+              val_interval: Optional[int] = None,
               val_neighborhood: Optional[int] = None,
-              val_steps: Optional[int] = None,
-              val_interval: Optional[int] = None):
+              val_steps: Optional[int] = None):
         run_name = ntpath.basename(ckpt_path)
         run_name = run_name[:run_name.rfind('.')]
         if self.logger is not None:

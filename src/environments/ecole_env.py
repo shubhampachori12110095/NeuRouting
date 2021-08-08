@@ -46,40 +46,13 @@ class EcoleEnvironment(VRPEnvironment):
 
     def solve(self, instance: VRPInstance, time_limit=None, max_steps=None) -> VRPSolution:
         self.obs, self.action_set, self.reward, done, edges = self.reset(instance)
-        # self.solution = VRPSolution.from_edges(self.instance, edges)
+        self.solution = VRPSolution.from_edges(self.instance, edges)
 
         self.max_steps = max_steps if max_steps is not None else self.max_steps
         self.time_limit = time_limit if time_limit is not None else self.time_limit
         start_time = time.time()
         while not done and self.n_steps < self.max_steps and time.time() - start_time < self.time_limit:
             self.obs, self.action_set, self.reward, done, edges = self.step()
-            # self.solution = VRPSolution.from_edges(self.instance, edges)
+            self.solution = VRPSolution.from_edges(self.instance, edges)
             self.n_steps += 1
         return self.solution
-
-
-class GCNEcoleEnvironment(EcoleEnvironment):
-    def __init__(self, model: GCNModel, device: str = "cpu"):
-        super().__init__(base_env=Branching(observation_function=NodeBipartite(),
-                                            information_function=VRPInfo()),
-                         name="GCN Ecole")
-        self.model = model.to(device)
-        self.device = device
-
-    def step(self):
-        with torch.no_grad():
-            observation = (torch.from_numpy(self.obs.row_features.astype(np.float32)).to(self.device),
-                           torch.from_numpy(self.obs.edge_features.indices.astype(np.int64)).to(self.device),
-                           torch.from_numpy(self.obs.edge_features.values.astype(np.float32)).view(-1, 1).to(self.device),
-                           torch.from_numpy(self.obs.column_features.astype(np.float32)).to(self.device))
-            logits = self.model(*observation)
-            action = self.action_set[logits[self.action_set.astype(np.int64)].argmax()]
-            return self.env.step(action)
-
-
-if __name__ == "__main__":
-    inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
-    scipsolver = GCNEcoleEnvironment(GCNModel())
-    sol = scipsolver.solve(inst, time_limit=10, max_steps=100)
-    inst.plot(sol)
-    plt.show()

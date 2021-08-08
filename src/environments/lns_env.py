@@ -86,6 +86,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
                 best_idx = np.argmin(self.neighborhood_costs)
                 self.solution = self.neighborhood[best_idx]
                 self.solution.verify()
+                # self.render()
         return self.solution
 
     def acceptance_criteria(self, criteria: dict) -> bool:
