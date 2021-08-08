@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod, ABC
 from typing import List
 
 from instances import VRPSolution
@@ -29,6 +29,3 @@ class LNSOperator:
     def __init__(self, destroy_procedure: DestroyProcedure, repair_procedure: RepairProcedure):
         self.destroy = destroy_procedure
         self.repair = repair_procedure
-
-
-from .neural_procedure import NeuralProcedure

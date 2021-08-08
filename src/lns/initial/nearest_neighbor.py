@@ -11,7 +11,7 @@ def nearest_neighbor_solution(instance: VRPInstance) -> VRPSolution:
     mask[0] = False
     demands = [0] + instance.demands
     while mask.any():
-        closest_customer = closest_locations(instance, solution[-1][-1], 1, mask)[0]
+        closest_customer = closest_locations(instance, solution[-1][-1], mask)[0]
         if demands[closest_customer] <= current_load:
             mask[closest_customer] = False
             solution[-1].append(closest_customer)
@@ -25,12 +25,17 @@ def nearest_neighbor_solution(instance: VRPInstance) -> VRPSolution:
     return VRPSolution(instance, solution)
 
 
-def closest_locations(instance: VRPInstance, location_idx: int, n: int, mask=None):
-    """Return the idx of the n closest locations sorted by distance."""
+def closest_locations(instance: VRPInstance, location_idx: int, mask=None):
+    """Return the idx of the locations sorted by distance."""
     if mask is None:
         mask = np.array([True] * (instance.n_customers + 1))
-    mask[location_idx] = False
+        mask[location_idx] = False
     distances = np.array(instance.distance_matrix[location_idx])
     distances[~mask] = np.inf
     order = np.argsort(distances)
-    return order[:n]
+    last = 0
+    for idx in order:
+        last += 1
+        if distances[idx] is np.inf:
+            break
+    return order[:last]

@@ -7,7 +7,8 @@ from torch import nn
 from torch.autograd import Variable
 
 from instances import VRPSolution
-from lns import DestroyProcedure, NeuralProcedure
+from lns import DestroyProcedure
+from lns.neural import NeuralProcedure
 
 
 class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):

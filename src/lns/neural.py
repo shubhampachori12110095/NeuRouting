@@ -11,7 +11,7 @@ from torch import nn
 
 from environments.lns_env import LNSEnvironment
 from environments.batch_lns_env import BatchLNSEnvironment
-from instances import VRPInstance, VRPSolution
+from instances import VRPInstance
 from lns import LNSProcedure, RepairProcedure, DestroyProcedure, LNSOperator
 from utils.logging import Logger
 

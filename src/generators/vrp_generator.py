@@ -9,8 +9,9 @@ from instances import VRPInstance
 
 
 def generate_instance(n_customers: int,
-                      distribution: str = 'nazari') -> VRPInstance:
-    return generate_multiple_instances(1, n_customers, distribution)[0]
+                      distribution: str = 'nazari',
+                      seed=42) -> VRPInstance:
+    return generate_multiple_instances(1, n_customers, distribution, seed)[0]
 
 
 def generate_multiple_instances(n_instances: int,

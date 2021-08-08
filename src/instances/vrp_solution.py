@@ -16,7 +16,7 @@ class Route(List[int]):
         return len(self) > 1 and (self[0] == self[-1] == 0)
 
     def is_incomplete(self) -> bool:
-        return len(self) > 1 and (self[0] != 0 or self[-1] != 0)
+        return self[0] != 0 or self[-1] != 0
 
     def total_distance(self) -> float:
         return np.sum([self.distance_matrix[from_idx, to_idx] for from_idx, to_idx in zip(self[:-1], self[1:])])
@@ -31,16 +31,29 @@ class Route(List[int]):
         return distance
 
     def total_demand(self) -> int:
-        return np.sum(self.demands[idx - 1] for idx in self[1:-1])
+        demands = [0] + self.demands
+        return np.sum(demands[idx] for idx in self)
 
     def demand_till_customer(self, customer_idx: int) -> int:
         assert customer_idx in self, f"Customer {customer_idx} not in this route"
+        demands = [0] + self.demands
         demand = 0
-        for idx in self[1:-1]:
-            demand += self.demands[idx - 1]
+        for idx in self:
+            demand += demands[idx]
             if idx == customer_idx:
                 break
         return demand
+
+    def append_route(self, route, self_begin, route_begin):
+        assert self.is_incomplete(), "Cannot append to a complete route."
+        if not route_begin:
+            route.reverse()
+        if not self_begin:
+            for el in route:
+                self.append(el)
+        else:
+            for el in route:
+                self.insert(0, el)
 
 
 class VRPSolution:
@@ -77,7 +90,13 @@ class VRPSolution:
         return adj
 
     def missing_customers(self) -> List[int]:
-        return list(set(range(self.instance.n_customers + 1)) - set([from_id for from_id, _ in self.as_edges()]))
+        missing = set()
+        for route in self.routes:
+            if route[0] != 0:
+                missing.add(route[0])
+            if route[-1] != 0:
+                missing.add(route[-1])
+        return list(missing)
 
     def verify(self) -> bool:
         # Each tour does not exceed the vehicle capacity
@@ -103,11 +122,11 @@ class VRPSolution:
         return [route for route in self.routes if route.is_complete()]
 
     def incomplete_routes(self) -> List[Route]:
-        return [route for route in self.routes if route.is_incomplete()]
+        return [route for route in self.routes if route.is_incomplete() and len(route) > 1]
 
     def get_customer_route(self, customer_idx: int) -> Route:
         for route in self.routes:
-            if customer_idx in route and len(route) > 1:
+            if customer_idx in route:
                 return route
 
     def destroy_nodes(self, to_remove: List[int]):
