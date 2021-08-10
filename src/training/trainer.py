@@ -3,10 +3,10 @@ import os
 import random
 from typing import Optional
 
-from environments.gcn_ecole_env import GCNEcoleEnvironment
+# from environments.gcn_ecole_env import GCNEcoleEnvironment
 from generators import generate_multiple_instances
 from nlns.destroy import EgateDestroy, ResidualGatedGCNDestroy, DestroyRandom, DestroyPointBased, DestroyTourBased
-from nlns.repair import ActorCriticRepair, SCIPRepair
+from nlns.repair import RLAgentRepair, SCIPRepair
 from nlns.repair.greedy_repair import GreedyRepair
 from models import EgateModel, ResidualGatedGCNModel, VRPActorModel, VRPCriticModel
 from models.bipartite_gcn import BipartiteGCNModel
@@ -30,12 +30,12 @@ class Trainer:
             "rl_agent": VRPActorModel()
         }
         self.neural_envs = {
-            "bipartite_gcn": GCNEcoleEnvironment,
+            # "bipartite_gcn": GCNEcoleEnvironment,
         }
         self.neural_procedures = {
             "egate": EgateDestroy,
             "res_gated_gcn": ResidualGatedGCNDestroy,
-            "rl_agent": ActorCriticRepair,
+            "rl_agent": RLAgentRepair,
         }
         self.destroy_procedures = {
             "random": DestroyRandom,
@@ -47,7 +47,7 @@ class Trainer:
         self.repair_procedures = {
             "greedy": GreedyRepair,
             "scip": SCIPRepair,
-            "rl_agent": ActorCriticRepair
+            "rl_agent": RLAgentRepair
         }
 
         self.n_customers = n_customers

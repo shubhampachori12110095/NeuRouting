@@ -13,9 +13,9 @@ from utils.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
 
 
-class ActorCriticRepair(NeuralProcedure, RepairProcedure):
+class RLAgentRepair(NeuralProcedure, RepairProcedure):
     def __init__(self, actor: VRPActorModel, critic: VRPCriticModel = None, device='cpu', logger=None):
-        super(ActorCriticRepair, self).__init__(actor, device, logger)
+        super(RLAgentRepair, self).__init__(actor, device, logger)
         self.critic = critic.to(device) if critic is not None else critic
 
     def multiple(self, solutions: List[VRPSolution]):

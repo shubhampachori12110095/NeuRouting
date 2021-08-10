@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 from more_itertools import split_after
@@ -129,6 +129,11 @@ class VRPSolution:
             if customer_idx in route:
                 return route
 
+    def get_edge_route(self, edge: Tuple[int, int]) -> Route:
+        for route in self.routes:
+            if edge[0] in route and edge[1] in route:
+                return route
+
     def destroy_nodes(self, to_remove: List[int]):
         incomplete_routes = []
         complete_routes = []
@@ -165,15 +170,17 @@ class VRPSolution:
 
     def destroy_edges(self, to_remove: List[tuple]):
         for edge in to_remove:
-            route = self.get_customer_route(edge[0])
+            route = self.get_edge_route(edge)
             splits = list(split_after(route, lambda x: x == edge[0]))
             assert len(splits) == 2, f"{route}: {splits} because of {edge}"
             presplit, postsplit = splits
-            presplit = Route(presplit, self.instance)
-            postsplit = Route(postsplit, self.instance)
             self.routes.remove(route)
-            self.routes.append(presplit)
-            self.routes.append(postsplit)
+            if presplit != [0]:
+                presplit = Route(presplit, self.instance)
+                self.routes.append(presplit)
+            if postsplit != [0]:
+                postsplit = Route(postsplit, self.instance)
+                self.routes.append(postsplit)
 
     def __deepcopy__(self, memo):
         routes_copy = [Route(route[:], self.instance) for route in self.routes]

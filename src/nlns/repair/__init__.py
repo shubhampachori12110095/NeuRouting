@@ -1,2 +1,2 @@
 from .scip_repair import SCIPRepair
-from .actor_critic_repair import ActorCriticRepair
+from .rl_agent_repair import RLAgentRepair

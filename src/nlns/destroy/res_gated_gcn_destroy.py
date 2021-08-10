@@ -13,6 +13,7 @@ from instances import VRPSolution
 from nlns import DestroyProcedure
 from nlns.neural import NeuralProcedure
 from models import ResidualGatedGCNModel
+from utils.visualize import plot_heatmap
 
 
 class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
@@ -26,19 +27,27 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         self.edges_probs = None
 
     def multiple(self, solutions: List[VRPSolution]):
-        edges_preds, _ = self.model.forward(*self.features([sol.instance for sol in solutions]))
-        prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1]
-        self.edges_probs = np.exp(prob_preds)
+        instances = [sol.instance for sol in solutions]
+        if self.current_instances is None or instances != self.current_instances:
+            self.current_instances = instances
+            edges_preds, _ = self.model.forward(*self.features(instances))
+            prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1]
+            self.edges_probs = np.exp(prob_preds)
+
         for sol, probs in zip(solutions, self.edges_probs):
             sol.verify()
             sol_edges = np.array(sol.as_edges())
-            sol_edges_probs = np.array([probs[c1, c2].numpy() for c1, c2 in sol_edges])
-            sol_edges_probs /= sol_edges_probs.sum()
+            sol_edges_probs = np.array([1 - probs[c1, c2].numpy() for c1, c2 in sol_edges])
+            sol_edges_probs_norm = sol_edges_probs / sol_edges_probs.sum()
+            n_nodes = sol.instance.n_customers + 1
+            heatmap = np.zeros((n_nodes, n_nodes))
+            for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
+                heatmap[c1, c2] = prob
+            # plot_heatmap(plt.gca(), sol.instance, heatmap)
+            # plt.show()
             n_remove = int(sol.instance.n_customers * self.percentage)
-            to_remove = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs, replace=False)
+            to_remove = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
             sol.destroy_edges(sol_edges[to_remove])
-            sol.instance.plot(sol)
-            plt.show()
             # to_remove = list(set([node for edge in to_remove for node in edge]))
             # sol.destroy_nodes(to_remove)
 
@@ -93,9 +102,6 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
                 "optim": self.optimizer.state_dict()}
 
     def features(self, instances):
-        if instances is None or instances == self.current_instances:
-            return self.edges_probs  # Probabilities have already been computed
-
         edges = np.stack([inst.adjacency_matrix(self.num_neighbors) for inst in instances])
         edges = Variable(torch.LongTensor(edges), requires_grad=False)
         edges_values = np.stack([inst.distance_matrix for inst in instances])
