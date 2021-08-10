@@ -39,10 +39,10 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             sol_edges = np.array(sol.as_edges())
             sol_edges_probs = np.array([1 - probs[c1, c2].numpy() for c1, c2 in sol_edges])
             sol_edges_probs_norm = sol_edges_probs / sol_edges_probs.sum()
-            n_nodes = sol.instance.n_customers + 1
-            heatmap = np.zeros((n_nodes, n_nodes))
-            for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
-                heatmap[c1, c2] = prob
+            # n_nodes = sol.instance.n_customers + 1
+            # heatmap = np.zeros((n_nodes, n_nodes))
+            # for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
+            #    heatmap[c1, c2] = prob
             # plot_heatmap(plt.gca(), sol.instance, heatmap)
             # plt.show()
             n_remove = int(sol.instance.n_customers * self.percentage)
@@ -56,7 +56,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
 
     def _init_train(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
-        self.lkh = LKHSolver("../../executables/LKH3")
+        self.lkh = LKHSolver("./executables/LKH3")
         self.n_samples = 0
         self.running_loss = 0.0
         self.running_preds_mean_cost = 0.0

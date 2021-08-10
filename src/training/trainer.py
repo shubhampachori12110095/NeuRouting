@@ -79,11 +79,11 @@ class Trainer:
         neural_proc, model = self._select_neural_env(model_name, self.neural_procedures)
 
         if model_name in self.destroy_procedures.keys():
-            neural_proc = neural_proc(model, destroy_percentage, self.device, self.logger)
+            neural_proc = neural_proc(model, destroy_percentage, device=self.device, logger=self.logger)
             destroy_name = model_name
             repair_name = opposite_name
         else:
-            neural_proc = neural_proc(model, VRPCriticModel(), self.device, self.logger)
+            neural_proc = neural_proc(model, VRPCriticModel(), device=self.device, logger=self.logger)
             destroy_name = opposite_name
             repair_name = model_name
 
