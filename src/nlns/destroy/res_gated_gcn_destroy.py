@@ -113,7 +113,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         nodes_demands = np.stack([np.array(inst.demands, dtype=float) / inst.capacity for inst in instances])
         nodes_values = np.concatenate((nodes_coord, np.pad(nodes_demands, ((0, 0), (1, 0)))[:, :, None]), -1)
         nodes_values = Variable(torch.FloatTensor(nodes_values), requires_grad=False)
-        return edges, edges_values, nodes, nodes_values
+        return edges.to(self.device), edges_values.to(self.device), nodes.to(self.device), nodes_values.to(self.device)
 
     @staticmethod
     def _mean_tour_len_edges(edges_values, edges_preds):
