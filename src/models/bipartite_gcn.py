@@ -3,7 +3,7 @@ from torch import nn
 import torch_geometric
 
 
-class GCNModel(nn.Module):
+class BipartiteGCNModel(nn.Module):
     def __init__(self):
         super().__init__()
         emb_size = 64

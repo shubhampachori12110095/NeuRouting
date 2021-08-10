@@ -16,7 +16,7 @@ class Encoder(nn.Module):
 
 class VRPCriticModel(nn.Module):
 
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size=128):
         super(VRPCriticModel, self).__init__()
         self.encoder = Encoder(4, hidden_size)
         self.encoder_2 = Encoder(4, hidden_size)

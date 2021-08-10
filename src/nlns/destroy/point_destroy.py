@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 
 from instances import VRPSolution
-from lns import DestroyProcedure
+from nlns import DestroyProcedure
 
 
 class DestroyPointBased(DestroyProcedure):

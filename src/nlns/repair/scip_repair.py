@@ -7,7 +7,7 @@ from pyscipopt import Model
 
 from instances.vrp_solution import VRPSolution
 from instances.vrp_model_scip import VRPModelSCIP
-from lns import RepairProcedure
+from nlns import RepairProcedure
 
 
 class SCIPRepair(RepairProcedure):

@@ -6,8 +6,8 @@ from typing import List, Tuple
 
 from environments import VRPEnvironment
 from instances import VRPInstance, VRPSolution
-from lns import DestroyProcedure, RepairProcedure, LNSOperator
-from lns.initial import nearest_neighbor_solution
+from nlns import DestroyProcedure, RepairProcedure, LNSOperator
+from nlns.initial import nearest_neighbor_solution
 
 EMA_ALPHA = 0.2  # Exponential Moving Average Alpha
 
@@ -74,11 +74,11 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         return {"cost": new_cost}
 
     def solve(self, instance: VRPInstance, max_steps=None, time_limit=None) -> VRPSolution:
+        self.reset(instance)
         self.max_steps = max_steps if max_steps is not None else self.max_steps
         self.time_limit = time_limit if time_limit is not None else self.time_limit
         start_time = time.time()
-        self.reset(instance)
-        while self.n_steps < max_steps and time.time() - start_time < time_limit:
+        while self.n_steps < self.max_steps and time.time() - start_time < self.time_limit:
             # Create a envs of copies of the same solution that can be repaired in parallel
             self.neighborhood = [deepcopy(self.solution) for _ in range(self.neighborhood_size)]
             criteria = self.step()
@@ -86,7 +86,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
                 best_idx = np.argmin(self.neighborhood_costs)
                 self.solution = self.neighborhood[best_idx]
                 self.solution.verify()
-                self.render()
+                # self.render()
         return self.solution
 
     def acceptance_criteria(self, criteria: dict) -> bool:

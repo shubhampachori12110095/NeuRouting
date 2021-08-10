@@ -1,18 +1,17 @@
-from heapq import nsmallest
 from typing import List
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
+from matplotlib import pyplot as plt
 from torch import optim
 from torch.autograd import Variable
 from sklearn.utils import compute_class_weight
 
 from baselines import LKHSolver
 from instances import VRPSolution
-from lns import DestroyProcedure
-from lns.neural import NeuralProcedure
+from nlns import DestroyProcedure
+from nlns.neural import NeuralProcedure
 from models import ResidualGatedGCNModel
 
 
@@ -30,14 +29,17 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         edges_preds, _ = self.model.forward(*self.features([sol.instance for sol in solutions]))
         prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1]
         self.edges_probs = np.exp(prob_preds)
-        for sol, feats in zip(solutions, self.edges_probs):
+        for sol, probs in zip(solutions, self.edges_probs):
             sol.verify()
-            edges = sol.as_edges()
-            map_edges_prob = {e: feats[e] for e in edges}
+            sol_edges = np.array(sol.as_edges())
+            sol_edges_probs = np.array([probs[c1, c2].numpy() for c1, c2 in sol_edges])
+            sol_edges_probs /= sol_edges_probs.sum()
             n_remove = int(sol.instance.n_customers * self.percentage)
-            to_remove = nsmallest(n_remove, map_edges_prob, key=map_edges_prob.get)
-            sol.destroy_edges(to_remove)
-            # to_remove = [node for edge in to_remove for node in edge]
+            to_remove = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs, replace=False)
+            sol.destroy_edges(sol_edges[to_remove])
+            sol.instance.plot(sol)
+            plt.show()
+            # to_remove = list(set([node for edge in to_remove for node in edge]))
             # sol.destroy_nodes(to_remove)
 
     def __call__(self, solution: VRPSolution):
@@ -52,6 +54,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         self.running_lkh_mean_cost = 0.0
 
     def _train_step(self, opposite_procedure, train_batch):
+        train_batch = [sol.instance for sol in train_batch]
         batch_size = len(train_batch)
         batch_edges_target = []
         lkh_costs = []

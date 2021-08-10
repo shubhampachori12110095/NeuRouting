@@ -58,7 +58,7 @@ class Pointer(nn.Module):
 
 class VRPActorModel(nn.Module):
 
-    def __init__(self, hidden_size, device="cpu"):
+    def __init__(self, hidden_size=128, device="cpu"):
         super(VRPActorModel, self).__init__()
         self.all_embed = Encoder(4, hidden_size)
         self.pointer = Pointer(hidden_size, device)

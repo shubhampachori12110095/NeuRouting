@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import Data, DataLoader, Dataset
 
 
 class Buffer:
@@ -35,11 +35,11 @@ class Buffer:
             advs[i] = adv
         return target_vs, advs
 
-    def gen_datas(self, last_v=0, _lambda=1.0):
+    def generate_dataset(self, last_v=0, _lambda=0.99):
         target_vs, advs = self.compute_values(last_v, _lambda)
         advs = (advs - advs.mean()) / advs.std()
         l, w = target_vs.shape
-        datas = []
+        dataset = []
         for i in range(l):
             for j in range(w):
                 nodes = self.buf_nodes[i][j]
@@ -54,14 +54,13 @@ class Buffer:
                             action=torch.tensor(action).long(),
                             log_prob=torch.tensor([log_prob]).float(),
                             adv=torch.tensor([adv]).float())
-                datas.append(data)
-        return datas
+                dataset.append(data)
+        return dataset
 
     @staticmethod
-    def create_data(_nodes, _edges, batch_size=None):
-        datas = []
+    def to_dataset(_nodes, _edges):
+        dataset = []
         n_graphs = len(_nodes)
-        batch_size = batch_size if batch_size is not None else n_graphs
         n_nodes = len(_nodes[0])
         edge_index = torch.LongTensor([[i, j] for i in range(n_nodes) for j in range(n_nodes)]).T
         for i in range(n_graphs):
@@ -69,5 +68,5 @@ class Buffer:
             edges = _edges[i]
             data = Data(x=torch.from_numpy(nodes).float(), edge_index=edge_index,
                         edge_attr=torch.from_numpy(edges).float())
-            datas.append(data)
-        return DataLoader(datas, batch_size=batch_size)
+            dataset.append(data)
+        return list(DataLoader(dataset, batch_size=n_graphs))[0]

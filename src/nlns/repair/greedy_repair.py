@@ -3,16 +3,14 @@ import numpy as np
 from environments.lns_env import LNSEnvironment
 from generators import generate_instance
 from instances import VRPSolution
-from lns import RepairProcedure, LNSOperator
-from lns.destroy import DestroyRandom
-from lns.initial.nearest_neighbor import closest_locations
-from lns.repair import SCIPRepair
+from nlns import RepairProcedure, LNSOperator
+from nlns.destroy import DestroyRandom
+from nlns.initial.nearest_neighbor import closest_locations
 
 
 class GreedyRepair(RepairProcedure):
     def __call__(self, solution: VRPSolution):
         instance = solution.instance
-        i = 0
         while len(solution.missing_customers()) > 0:
             missing = np.array(solution.missing_customers())
 

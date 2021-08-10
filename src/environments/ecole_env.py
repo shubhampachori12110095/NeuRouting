@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 from environments import VRPEnvironment
 from instances import VRPInstance, VRPSolution, VRPModelSCIP
-from models.gcn import GCNModel
+from models.bipartite_gcn import BipartiteGCNModel
 from utils.io import read_vrp
 
 

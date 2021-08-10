@@ -17,14 +17,14 @@ class Logger(ABC):
 
 
 class WandBLogger(Logger):
-    def __init__(self, model: nn.Module, project: str = "NeuRouting", username: str = "mazzio97"):
-        self.model = model
+    def __init__(self, project: str = "NeuRouting", username: str = "mazzio97"):
+        # self.model = model
         self.project = project
         self.username = username
 
     def new_run(self, run_name=None):
         wandb.init(name=run_name, project=self.project, entity=self.username)
-        wandb.watch(self.model)
+        # wandb.watch(self.model)
 
     def log(self, info: Dict[str, Number], phase: str):
         keys = []

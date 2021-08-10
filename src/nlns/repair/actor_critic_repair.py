@@ -7,9 +7,8 @@ import torch.nn.functional as F
 from torch import optim
 
 from instances import VRPSolution
-from lns import RepairProcedure
-from lns.neural import NeuralProcedure
-from lns.initial import nearest_neighbor_solution
+from nlns import RepairProcedure
+from nlns.neural import NeuralProcedure
 from utils.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
 
@@ -58,12 +57,10 @@ class ActorCriticRepair(NeuralProcedure, RepairProcedure):
         self.diversity_values = []
 
     def _train_step(self, opposite_procedure, train_batch):
-        batch_solutions = [nearest_neighbor_solution(inst) for inst in train_batch]
-
-        opposite_procedure.multiple(batch_solutions)
-        costs_destroyed = [solution.cost() for solution in batch_solutions]
-        _, tour_logp, critic_est = self.multiple(batch_solutions)
-        costs_repaired = [solution.cost() for solution in batch_solutions]
+        opposite_procedure.multiple(train_batch)
+        costs_destroyed = [solution.cost() for solution in train_batch]
+        _, tour_logp, critic_est = self.multiple(train_batch)
+        costs_repaired = [solution.cost() for solution in train_batch]
 
         # Reward/Advantage computation
         reward = np.array(costs_repaired) - np.array(costs_destroyed)

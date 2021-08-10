@@ -7,9 +7,8 @@ from torch import optim
 from torch_geometric.data import DataLoader
 
 from instances import VRPSolution
-from lns.initial import nearest_neighbor_solution
-from lns import DestroyProcedure
-from lns.neural import NeuralProcedure
+from nlns import DestroyProcedure
+from nlns.neural import NeuralProcedure
 from utils.buffer import Buffer
 from utils.running_mean_std import RunningMeanStd
 from models import EgateModel
@@ -25,12 +24,9 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         n_nodes = solutions[0].instance.n_customers + 1
         n_remove = int(n_nodes * self.percentage)
         nodes, edges = zip(*[self.features(sol) for sol in solutions])
-        data_loader = Buffer.create_data(nodes, edges)
-        for batch in data_loader:
-            batch = batch.to(self.device)
-            actions, log_p, values, entropy = self.model(batch, n_remove)
-            to_remove = actions.squeeze().tolist()
-        assert len(to_remove) == len(solutions), "Each solution must have a corresponding list of nodes to remove."
+        dataset = Buffer.to_dataset(nodes, edges).to(self.device)
+        actions, log_p, values, entropy = self.model(dataset, n_remove)
+        to_remove = actions.squeeze().tolist()
         for sol, remove in zip(solutions, to_remove):
             sol.destroy_nodes(remove)
 
@@ -40,8 +36,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
     def _init_train(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
         self.model.train()
-        self.n_rollout = 2
-        self.rollout_steps = 5
+        self.rollout_steps = 10
         self.alpha = 1.0
         self.loss_vs = []
         self.loss_ps = []
@@ -49,20 +44,14 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         self.entropies = []
 
     def _train_step(self, opposite_procedure, train_batch):
-        batch_solutions = [nearest_neighbor_solution(inst) for inst in train_batch]
         batch_size = len(train_batch)
+
+        rollout_batch = [deepcopy(sol) for sol in train_batch]
         # Rollout phase
-        all_datas = []
-        for i in range(self.n_rollout):
-            print(f"> Rollout {i + 1}:")
-            is_last = (i == self.n_rollout - 1)
-            rollout_solutions = [deepcopy(sol) for sol in batch_solutions]
-            datas, states = self._rollout(rollout_solutions, opposite_procedure, self.rollout_steps, is_last)
-            all_datas.extend(datas)
-            print(f"{len(all_datas)} samples currently present.")
+        dataset = self._rollout(rollout_batch, opposite_procedure, self.rollout_steps)
 
         # Training phase
-        data_loader = DataLoader(all_datas, batch_size=batch_size, shuffle=True)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         for batch in data_loader:
             batch = batch.to(self.device)
@@ -97,7 +86,8 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         loss_p = np.mean(self.loss_ps[-log_interval:])
         loss = np.mean(self.losses[-log_interval:])
         entropy = np.mean(self.entropies[-log_interval:])
-        return {"batch_idx": batch_idx + 1,
+        return {"epoch": epoch + 1,
+                "batch_idx": batch_idx + 1,
                 "loss_v": loss_v,
                 "loss_p": loss_p,
                 "loss": loss,
@@ -109,7 +99,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
                 "parameters": self.model.state_dict(),
                 "optim": self.optimizer.state_dict()}
 
-    def _rollout(self, solutions, repair_procedure, n_steps, is_last):
+    def _rollout(self, solutions, repair_procedure, n_steps):
         n_nodes = solutions[0].instance.n_customers
         n_remove = int(n_nodes * self.percentage)
         all_nodes, all_edges = zip(*[self.features(sol) for sol in solutions])
@@ -117,16 +107,12 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         reward_norm = RunningMeanStd()
         with torch.no_grad():
             self.model.eval()
-            _sum = 0
-            _entropy = []
             for i in range(n_steps):
-                data_loader = buffer.create_data(all_nodes, all_edges, batch_size=len(solutions))
-                data = list(data_loader)[0].to(self.device)
-                actions, log_p, values, entropy = self.model(data, n_remove)
+                dataset = buffer.to_dataset(all_nodes, all_edges).to(self.device)
+                actions, log_p, values, entropy = self.model(dataset, n_remove)
                 for sol, to_remove in zip(solutions, actions):
                     prev_cost = sol.cost()
                     sol.destroy_nodes(to_remove)
-
                 repair_procedure.multiple(solutions)
 
                 new_all_nodes, new_all_edges, rewards = [], [], []
@@ -139,24 +125,12 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
                     rewards.append(prev_cost - new_cost)
 
                 rewards = np.array(rewards)
-                _sum = _sum + rewards
                 rewards = reward_norm(rewards)
-                _entropy.append(entropy.mean().cpu().numpy())
 
                 buffer.obs(all_nodes, all_edges, actions.cpu().numpy(), rewards, log_p.cpu().numpy(), values.cpu().numpy())
                 all_nodes, all_edges = new_all_nodes, new_all_edges
-                print(f"\t* Step {i + 1} completed.")
 
-            if not is_last:
-                data_loader = buffer.create_data(all_nodes, all_edges)
-                data = list(data_loader)[0].to(self.device)
-                _, _, values, _ = self.model(data, n_remove)
-                values = values.cpu().numpy()
-            else:
-                values = 0
-
-            datas = buffer.gen_datas(values, _lambda=0.99)
-            return datas, (all_nodes, all_edges)
+            return buffer.generate_dataset()
 
     @staticmethod
     def features(solution: VRPSolution) -> Tuple[np.ndarray, np.ndarray]:

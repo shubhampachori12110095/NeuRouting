@@ -6,8 +6,8 @@ from typing import List
 import numpy as np
 
 from environments import LNSEnvironment
-from lns import LNSOperator
-from lns.initial import nearest_neighbor_solution
+from nlns import LNSOperator
+from nlns.initial import nearest_neighbor_solution
 
 
 class SimAnnealingLNSEnvironment(LNSEnvironment):

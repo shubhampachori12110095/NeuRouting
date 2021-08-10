@@ -118,7 +118,6 @@ class Decoder(nn.Module):
 
         for i in range(n_steps):
             hx = self.cell(_input, hx)
-            #                 print (hx.size(),encoder_inputs.size(),mask.size())
             p = self.attn(hx, encoder_inputs, mask)
             dist = Categorical(p)
             entropy = dist.entropy()
@@ -147,7 +146,7 @@ class Decoder(nn.Module):
 
 
 class EgateModel(nn.Module):
-    def __init__(self, input_node_dim, hidden_node_dim, input_edge_dim, hidden_edge_dim, conv_layers=2):
+    def __init__(self, input_node_dim=5, hidden_node_dim=64, input_edge_dim=2, hidden_edge_dim=16, conv_layers=2):
         super(EgateModel, self).__init__()
         self.encoder = Encoder(input_node_dim, hidden_node_dim, input_edge_dim, hidden_edge_dim,
                                conv_layers=conv_layers)
