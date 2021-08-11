@@ -73,6 +73,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             lkh_costs.append(sol.cost())
         edges_target = np.stack(batch_edges_target, axis=0)
         edges_target = Variable(torch.LongTensor(edges_target), requires_grad=False)
+        edges_target = edges_target.to(self.device)
         edges, edges_values, nodes, nodes_values = self.features(train_batch)
         edge_labels = edges_target.cpu().numpy().flatten()
         edge_cw = compute_class_weight("balanced", classes=np.unique(edge_labels), y=edge_labels)
