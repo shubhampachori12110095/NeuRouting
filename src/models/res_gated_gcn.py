@@ -114,7 +114,6 @@ class ResidualGatedGCNModel(nn.Module):
 
         if y_edges is not None:
             # Compute loss
-            edge_cw = torch.Tensor(edge_cw).type(torch.FloatTensor)  # Convert to tensors
             loss = nn.NLLLoss(edge_cw)(y_perm, y_edges)
         else:
             loss = None

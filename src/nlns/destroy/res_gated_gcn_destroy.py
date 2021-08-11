@@ -77,6 +77,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         edges, edges_values, nodes, nodes_values = self.features(train_batch)
         edge_labels = edges_target.cpu().numpy().flatten()
         edge_cw = compute_class_weight("balanced", classes=np.unique(edge_labels), y=edge_labels)
+        edge_cw = torch.FloatTensor(edge_cw).to(self.device)
         edges_preds, loss = self.model.forward(edges, edges_values, nodes, nodes_values, edges_target, edge_cw)
         loss.backward()
         self.optimizer.step()
