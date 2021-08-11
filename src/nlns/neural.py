@@ -66,7 +66,7 @@ class NeuralProcedure(LNSProcedure):
                 if self.logger is not None and (batch_idx + 1) % log_interval == 0:
                     self.logger.log(self._train_info(epoch, batch_idx, log_interval), phase="train")
 
-                if val_instances is not None and (batch_idx + 1) % val_interval == 0 or batch_idx + 1 == n_batches:
+                if val_instances is not None and ((batch_idx + 1) % val_interval == 0 or batch_idx + 1 == n_batches):
                     self.model.eval()
                     start_eval_time = time.time()
                     solutions = self.validate(opposite_procedure, val_instances, val_neighborhood, val_steps)

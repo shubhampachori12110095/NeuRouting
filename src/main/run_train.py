@@ -2,7 +2,7 @@ import argparse
 
 import torch
 
-from training.trainer import Trainer
+from main.trainer import Trainer
 from utils.logging import MultipleLogger, ConsoleLogger, WandBLogger
 
 parser = argparse.ArgumentParser(description='Train Neural VRP')
@@ -26,6 +26,7 @@ if __name__ == "__main__":
     print(f"Using {device} for training.")
 
     logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
+    # logger = ConsoleLogger()
 
     trainer = Trainer(n_customers=args.n_customers,
                       n_train_instances=args.train_samples,
