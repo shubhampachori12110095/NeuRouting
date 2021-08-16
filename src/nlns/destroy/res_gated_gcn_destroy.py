@@ -2,36 +2,34 @@ from typing import List
 
 import numpy as np
 import torch
+from torch import nn
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
+from sklearn.utils import compute_class_weight
 from torch import optim
 from torch.autograd import Variable
-from sklearn.utils import compute_class_weight
 
 from baselines import LKHSolver
 from instances import VRPSolution
 from nlns import DestroyProcedure
 from nlns.neural import NeuralProcedure
 from models import ResidualGatedGCNModel
-from utils.visualize import plot_heatmap
 
 
 class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
 
     def __init__(self, model: ResidualGatedGCNModel, percentage, num_neighbors=-1, device="cpu", logger=None):
-        super(ResidualGatedGCNDestroy, self).__init__(model, device, logger)
-        assert 0 <= percentage <= 1
-        self.percentage = percentage
+        super(ResidualGatedGCNDestroy, self).__init__(nn.DataParallel(model), device, logger)
         self.num_neighbors = num_neighbors
         self.current_instances = None
         self.edges_probs = None
+        self.percentage = percentage
 
     def multiple(self, solutions: List[VRPSolution]):
         instances = [sol.instance for sol in solutions]
         if self.current_instances is None or instances != self.current_instances:
             self.current_instances = instances
             edges_preds, _ = self.model.forward(*self.features(instances))
-            prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1]
+            prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1].to(self.device)
             self.edges_probs = np.exp(prob_preds)
 
         for sol, probs in zip(solutions, self.edges_probs):
@@ -47,12 +45,18 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             # plt.show()
             n_remove = int(sol.instance.n_customers * self.percentage)
             to_remove = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
-            sol.destroy_edges(sol_edges[to_remove])
-            # to_remove = list(set([node for edge in to_remove for node in edge]))
-            # sol.destroy_nodes(to_remove)
+            # sol.destroy_edges(sol_edges[to_remove])
+            to_remove = list(set([node for edge in to_remove for node in edge]))
+            sol.destroy_nodes(to_remove)
 
     def __call__(self, solution: VRPSolution):
         self.multiple([solution])
+
+    def load_model(self, ckpt_path: str):
+        print(self.device)
+        ckpt = torch.load(ckpt_path, map_location=self.device)
+        self.model.load_state_dict(ckpt["model_state_dict"])
+        self.model.eval()
 
     def _init_train(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
@@ -100,7 +104,7 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
     def _ckpt_info(self, epoch, batch_idx) -> dict:
         return {"epoch": epoch + 1,
                 "batch_idx": batch_idx + 1,
-                "parameters": self.model.state_dict(),
+                "model_state_dict": self.model.state_dict(),
                 "optim": self.optimizer.state_dict()}
 
     def features(self, instances):
@@ -115,7 +119,8 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         nodes_demands = np.stack([np.array(inst.demands, dtype=float) / inst.capacity for inst in instances])
         nodes_values = np.concatenate((nodes_coord, np.pad(nodes_demands, ((0, 0), (1, 0)))[:, :, None]), -1)
         nodes_values = Variable(torch.FloatTensor(nodes_values), requires_grad=False)
-        return edges.to(self.device), edges_values.to(self.device), nodes.to(self.device), nodes_values.to(self.device)
+        return edges.to(self.device), edges_values.to(self.device), nodes.to(self.device), nodes_values.to(
+            self.device)
 
     @staticmethod
     def _mean_tour_len_edges(edges_values, edges_preds):

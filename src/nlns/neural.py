@@ -3,15 +3,14 @@ import os
 import time
 from abc import abstractmethod
 from math import ceil
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Callable
 
 import numpy as np
 import torch
 from torch import nn
 
-from environments.lns_env import LNSEnvironment
 from environments.batch_lns_env import BatchLNSEnvironment
-from instances import VRPInstance
+from instances import VRPInstance, VRPNeuralSolution
 from nlns import LNSProcedure, RepairProcedure, DestroyProcedure, LNSOperator
 from nlns.initial import nearest_neighbor_solution
 from utils.logging import Logger
@@ -26,15 +25,14 @@ class NeuralProcedure(LNSProcedure):
 
     def train(self,
               train_instances: List[VRPInstance],
-              opposite_procedure: Union[DestroyProcedure, RepairProcedure],
+              opposite: Union[DestroyProcedure, RepairProcedure],
               n_epochs: int,
               batch_size: int,
               ckpt_path: str,
-              initial_solution=nearest_neighbor_solution,
-              log_interval: Optional[int] = None,
+              initial: Callable = nearest_neighbor_solution,
               val_instances: Optional[List[VRPInstance]] = None,
-              val_interval: Optional[int] = None,
-              val_neighborhood: Optional[int] = None):
+              log_interval: Optional[int] = None,
+              val_interval: Optional[int] = None):
 
         run_name = ntpath.basename(ckpt_path)
         run_name = run_name[:run_name.rfind('.')]
@@ -47,13 +45,16 @@ class NeuralProcedure(LNSProcedure):
         if val_instances is not None:
             n_customers = val_instances[0].n_customers
             val_steps = n_customers
-            val_neighborhood = val_neighborhood if val_neighborhood is not None else n_customers
             log_interval = log_interval if log_interval is not None else n_batches
             val_interval = val_interval if val_interval is not None else n_batches
 
         start_time = time.time()
         print(f"Starting {run_name} training...")
-        train_solutions = [initial_solution(inst) for inst in train_instances]
+        train_solutions = [initial(inst) for inst in train_instances]
+
+        if isinstance(self, RepairProcedure):
+            train_solutions = [VRPNeuralSolution.from_solution(sol) for sol in train_solutions]
+
         self._init_train()
         for epoch in range(n_epochs):
             for batch_idx in range(n_batches):
@@ -61,7 +62,7 @@ class NeuralProcedure(LNSProcedure):
                 end = min((batch_idx + 1) * batch_size, train_size)
                 self.model.train()
 
-                self._train_step(opposite_procedure, train_solutions[begin:end])
+                self._train_step(opposite, train_solutions[begin:end])
 
                 if self.logger is not None and (batch_idx + 1) % log_interval == 0:
                     self.logger.log(self._train_info(epoch, batch_idx, log_interval), phase="train")
@@ -69,7 +70,7 @@ class NeuralProcedure(LNSProcedure):
                 if val_instances is not None and ((batch_idx + 1) % val_interval == 0 or batch_idx + 1 == n_batches):
                     self.model.eval()
                     start_eval_time = time.time()
-                    solutions = self.validate(opposite_procedure, val_instances, val_neighborhood, val_steps)
+                    solutions = self.validate(val_instances, batch_size, val_steps, opposite, initial)
                     runtime = time.time() - start_eval_time
                     mean_cost = np.mean([sol.cost() for sol in solutions])
                     if self.logger is not None:
@@ -85,24 +86,22 @@ class NeuralProcedure(LNSProcedure):
         print(f"Training completed successfully in {time.time() - start_time} seconds.")
 
     def validate(self,
-                 opposite_procedure: Union[DestroyProcedure, RepairProcedure],
                  instances: List[VRPInstance],
-                 neighborhood_size: int,
-                 steps: int):
+                 batch_size: int,
+                 steps: int,
+                 opposite_procedure: Union[DestroyProcedure, RepairProcedure],
+                 initial: Callable):
         # Fix the seed to reduce the sources of randomness while evaluating the model
         np.random.seed(42)
         torch.manual_seed(42)
         if self.val_env is None:
             if isinstance(opposite_procedure, RepairProcedure) and isinstance(self, DestroyProcedure):
-                base_env = LNSEnvironment(operators=[LNSOperator(self, opposite_procedure)],
-                                          neighborhood_size=neighborhood_size)
+                self.val_env = BatchLNSEnvironment(batch_size, [LNSOperator(self, opposite_procedure)], initial)
             elif isinstance(opposite_procedure, DestroyProcedure) and isinstance(self, RepairProcedure):
-                base_env = LNSEnvironment(operators=[LNSOperator(opposite_procedure, self)],
-                                          neighborhood_size=neighborhood_size)
+                self.val_env = BatchLNSEnvironment(batch_size, [LNSOperator(opposite_procedure, self)], initial)
             else:
-                base_env = None
-            assert base_env is not None, f"{opposite_procedure} and {self} should be two opposite LNS procedures."
-            self.val_env = BatchLNSEnvironment(base_env)
+                self.val_env = None
+            assert self.val_env is not None, f"{opposite_procedure} and {self} should be two opposite LNS procedures."
         return self.val_env.solve(instances, max_steps=steps)
 
     def load_model(self, ckpt_path: str):

@@ -14,13 +14,13 @@ def discrete_cmap(n, base_cmap='nipy_spectral'):
     return base.from_list(cmap_name, color_list, n)
 
 
-def plot_vrp(ax, instance, solution=None, node_size=100, font_size=12):
+def plot_vrp(ax, instance, title=None, solution=None, node_size=100, font_size=12):
     ax.set_xlim([-0.05, 1.05])
     ax.set_ylim([-0.05, 1.05])
     coords = np.array([instance.depot] + instance.customers)
     ax.scatter(instance.depot[0], instance.depot[1], c='black', s=node_size, marker='s')
     ax.text(instance.depot[0], instance.depot[1], "D", fontsize=font_size)
-    node_sizes = node_size * np.array([10] + instance.demands) / 10
+    node_sizes = node_size * np.array([10] + instance.demands) / 100
     if solution is not None:
         complete_routes = solution.complete_routes()
         incomplete_routes = solution.incomplete_routes()
@@ -58,7 +58,10 @@ def plot_vrp(ax, instance, solution=None, node_size=100, font_size=12):
             ys = np.array([y for _, y in coords[route]])
             ax.scatter(xs, ys, color=color, s=node_sizes[route])
             ax.plot(xs, ys, '--', color=color)
-        ax.set_title(solution.cost())
+        if title is None:
+            ax.set_title(solution.cost())
+        else:
+            ax.set_title(f"{title}: {str(solution.cost())}")
     else:
         for i in range(instance.n_customers):
             ax.scatter(instance.customers[i][0], instance.customers[i][1], c='orange', s=node_sizes[i])
@@ -74,7 +77,7 @@ def plot_heatmap(ax, instance, heatmap, threshold=0, node_size=100, font_size=12
     coords = np.array([instance.depot] + instance.customers)
 
     mask = heatmap > threshold
-    frm, to = np.triu(mask).nonzero()
+    frm, to = np.tril(mask).nonzero()
     edges_coords = np.stack((coords[frm], coords[to]), -2)
 
     weights = (heatmap[frm, to] - threshold) / (1 - threshold)

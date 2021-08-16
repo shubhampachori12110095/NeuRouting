@@ -6,10 +6,9 @@ import numpy as np
 import torch.nn.functional as F
 from torch import optim
 
-from instances import VRPSolution
 from nlns import RepairProcedure
 from nlns.neural import NeuralProcedure
-from utils.vrp_neural_solution import VRPNeuralSolution
+from instances.vrp_neural_solution import VRPNeuralSolution
 from models import VRPActorModel, VRPCriticModel
 
 
@@ -18,15 +17,14 @@ class RLAgentRepair(NeuralProcedure, RepairProcedure):
         super(RLAgentRepair, self).__init__(actor, device, logger)
         self.critic = critic.to(device) if critic is not None else critic
 
-    def multiple(self, solutions: List[VRPSolution]):
-        neural_solutions = [VRPNeuralSolution(solution) for solution in solutions]
-        emb_size = max([solution.min_nn_repr_size() for solution in neural_solutions])
-        batch_size = len(neural_solutions)
+    def multiple(self, solutions: List[VRPNeuralSolution]):
+        emb_size = max([solution.min_nn_repr_size() for solution in solutions])
+        batch_size = len(solutions)
 
         # Create envs input
         static_input = np.zeros((batch_size, emb_size, 2))
         dynamic_input = np.zeros((batch_size, emb_size, 2), dtype='int')
-        for i, solution in enumerate(neural_solutions):
+        for i, solution in enumerate(solutions):
             static_nn_input, dynamic_nn_input = solution.network_representation(emb_size)
             static_input[i] = static_nn_input
             dynamic_input[i] = dynamic_nn_input
@@ -40,10 +38,10 @@ class RLAgentRepair(NeuralProcedure, RepairProcedure):
         if self.critic is not None:
             cost_estimate = self._critic_model_forward(static_input, dynamic_input, capacity)
 
-        tour_idx, tour_logp = self._actor_model_forward(neural_solutions, static_input, dynamic_input, capacity)
+        tour_idx, tour_logp = self._actor_model_forward(solutions, static_input, dynamic_input, capacity)
         return tour_idx, tour_logp, cost_estimate
 
-    def __call__(self, solution: VRPSolution):
+    def __call__(self, solution: VRPNeuralSolution):
         self.multiple([solution])
 
     def _init_train(self):
@@ -130,7 +128,7 @@ class RLAgentRepair(NeuralProcedure, RepairProcedure):
 
             # Forward pass:
             # Returns a probability distribution over the point (tour end or depot) that origin should be connected to.
-            probs = self.model.forward(static_input, dynamic_input, origin_static_input, origin_dynamic_input)
+            probs = self.model.forward(static_input, dynamic_input_float, origin_static_input, origin_dynamic_input)
             probs = F.softmax(probs + mask.log(), dim=1)  # Set prob of masked tour ends to zero
 
             if self.model.training:
@@ -144,7 +142,7 @@ class RLAgentRepair(NeuralProcedure, RepairProcedure):
                 prob, ptr = torch.max(probs, 1)  # Greedy selection
                 logp = prob.log()
 
-            # Perform action  for all data sequentially
+            # Perform action for all data sequentially
             nn_input_updates = []
             ptr_np = ptr.cpu().numpy()
             for i, solution in enumerate(incomplete_solutions):
@@ -187,7 +185,7 @@ class RLAgentRepair(NeuralProcedure, RepairProcedure):
         return self.critic.forward(static_input, dynamic_input_float).view(-1)
 
     @staticmethod
-    def _get_mask(origin_nn_input_idx, dynamic_input, solutions: List[VRPNeuralSolution], capacity: int):
+    def _get_mask(origin_nn_input_idx, dynamic_input, solutions, capacity: int):
         """ Returns a mask for the current nn_input"""
         batch_size = origin_nn_input_idx.shape[0]
 

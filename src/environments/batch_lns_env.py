@@ -1,39 +1,65 @@
 import time
 from copy import deepcopy
+from math import ceil
 from typing import List
 
-import numpy as np
+import torch
 
-from environments.vrp_env import VRPSolver
-from environments.lns_env import LNSEnvironment
-from instances import VRPInstance, VRPSolution
+from environments import VRPEnvironment
+from environments.lns_env import LargeNeighborhoodSearch
+from instances import VRPInstance, VRPSolution, VRPNeuralSolution
+from nlns import LNSOperator
+from nlns.initial import nearest_neighbor_solution
 
 
-class BatchLNSEnvironment(VRPSolver):
-    def __init__(self, base_env: LNSEnvironment):
-        super().__init__("Batch LNS")
-        self._base_env = base_env
-        self.envs = None
+class BatchLNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
 
-    def reset(self, instance: List[VRPInstance]):
-        self.envs = [deepcopy(self._base_env) for _ in range(len(instance))]
-        self.instance = instance
-        self.solution = []
-        for env, inst in zip(self.envs, self.instance):
-            env.reset(inst)
-            self.solution.append(env.solution)
+    def __init__(self, batch_size: int,
+                 operators: List[LNSOperator],
+                 initial=nearest_neighbor_solution):
+        VRPEnvironment.__init__(self, "Batch LNS")
+        LargeNeighborhoodSearch.__init__(self, operators, initial, False)
+        self.batch_size = batch_size
+        self.instance = None
+        self.solution = None
+        self.costs = None
+        self.n_steps = 0
 
-    def solve(self, instance: List[VRPInstance], max_steps=None, time_limit=3600) -> List[VRPSolution]:
-        start_time = time.time()
+    def reset(self, instances: List[VRPInstance]):
+        super(BatchLNSEnvironment, self).reset(instances)
+        self.solution = [self.initial(inst) for inst in self.instance]
+        if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
+            self.solution = [VRPNeuralSolution.from_solution(sol) for sol in self.solution]
+        self.costs = [sol.cost() for sol in self.solution]
+
+    def step(self):
+        backup_copies = [deepcopy(sol) for sol in self.solution]
+        n_solutions = len(self.solution)
+
+        destroy_procedure, repair_procedure, idx = self.select_operator_pair()
+
+        n_batches = ceil(float(n_solutions) / self.batch_size)
+        for i in range(n_batches):
+            with torch.no_grad():
+                begin = i * self.batch_size
+                end = min((i + 1) * self.batch_size, n_solutions)
+                destroy_procedure.multiple(self.solution[begin:end])
+                repair_procedure.multiple(self.solution[begin:end])
+
+        for i in range(n_solutions):
+            cost = self.solution[i].cost()
+            # Only "accept" improving solutions
+            if self.costs[i] < cost:
+                self.solution[i] = backup_copies[i]
+            else:
+                self.costs[i] = cost
+
+    def solve(self, instance: List[VRPInstance], time_limit=None, max_steps=None) -> List[VRPSolution]:
         self.reset(instance)
-        while any([env.n_steps < max_steps for env in self.envs]) and time.time() - start_time < time_limit:
-            # Create a envs of copies of the same solution that can be repaired in parallel
-            for i, env in enumerate(self.envs):
-                env.neighborhood = [deepcopy(env.solution) for _ in range(env.neighborhood_size)]
-                criteria = env.step()
-                if env.acceptance_criteria(criteria):
-                    best_idx = np.argmin(env.neighborhood_costs)
-                    env.solution = env.neighborhood[best_idx]
-                    self.solution[i] = env.solution
-                    self.solution[i].verify()
+        self.max_steps = max_steps if max_steps is not None else self.max_steps
+        self.time_limit = time_limit if time_limit is not None else self.time_limit
+        start_time = time.time()
+        while self.n_steps < self.max_steps and time.time() - start_time < self.time_limit:
+            self.step()
+            self.n_steps += 1
         return self.solution

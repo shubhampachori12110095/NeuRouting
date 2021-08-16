@@ -5,7 +5,7 @@ import torch
 from typing import List, Tuple
 
 from environments import VRPEnvironment
-from instances import VRPInstance, VRPSolution
+from instances import VRPInstance, VRPSolution, VRPNeuralSolution
 from nlns import DestroyProcedure, RepairProcedure, LNSOperator
 from nlns.initial import nearest_neighbor_solution
 
@@ -41,12 +41,17 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         LargeNeighborhoodSearch.__init__(self, operators, initial, adaptive)
         VRPEnvironment.__init__(self, name)
         self.neighborhood_size = neighborhood_size
+        self.incumbent_solution = None
         self.neighborhood = None
         self.neighborhood_costs = None
 
     def reset(self, instance: VRPInstance):
         super(LNSEnvironment, self).reset(instance)
         self.solution = self.initial(instance)
+        if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
+            self.solution = VRPNeuralSolution.from_solution(self.solution)
+        self.incumbent_solution = self.solution
+        # self.render()
 
     def step(self) -> dict:
         current_cost = self.solution.cost()
@@ -60,7 +65,8 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         lns_iter_duration = time.time() - iter_start_time
 
         self.neighborhood_costs = [sol.cost() for sol in self.neighborhood]
-        new_cost = min(self.neighborhood_costs)
+        best_idx = int(np.argmin(self.neighborhood_costs))
+        new_cost = self.neighborhood_costs[best_idx]
 
         # If adaptive search is used, update performance scores
         if self.adaptive:
@@ -71,7 +77,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
 
         self.n_steps += 1
 
-        return {"cost": new_cost}
+        return {"best_idx": best_idx, "cost": new_cost}
 
     def solve(self, instance: VRPInstance, max_steps=None, time_limit=None) -> VRPSolution:
         self.reset(instance)
@@ -82,11 +88,17 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
             # Create a envs of copies of the same solution that can be repaired in parallel
             self.neighborhood = [deepcopy(self.solution) for _ in range(self.neighborhood_size)]
             criteria = self.step()
-            if self.acceptance_criteria(criteria):
-                best_idx = np.argmin(self.neighborhood_costs)
-                self.solution = self.neighborhood[best_idx]
-                self.solution.verify()
+
+            if criteria["cost"] < self.incumbent_solution.cost():
+                self.incumbent_solution = deepcopy(self.neighborhood[criteria["best_idx"]])
+                self.incumbent_solution.verify()
+                self.improvements += 1
                 # self.render()
+
+            if self.acceptance_criteria(criteria):
+                self.solution = deepcopy(self.neighborhood[criteria["best_idx"]])
+                self.solution.verify()
+
         return self.solution
 
     def acceptance_criteria(self, criteria: dict) -> bool:

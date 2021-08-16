@@ -27,7 +27,7 @@ class VRPSolver(ABC):
 
     def render(self, ax=None):
         if type(self.instance) is VRPInstance:
-            self.instance.plot(solution=self.solution, ax=ax)
+            self.instance.plot(solution=self.solution, ax=ax, title=self.name)
             plt.show()
 
 
@@ -35,12 +35,14 @@ class VRPEnvironment(VRPSolver):
     def __init__(self, name):
         super().__init__(name)
         self.n_steps = 0
+        self.improvements = 0
         self.max_steps = INF
         self.time_limit = INF
 
     def reset(self, instance):
         self.instance = instance
         self.n_steps = 0
+        self.improvements = 0
         self.max_steps = INF
         self.time_limit = INF
 

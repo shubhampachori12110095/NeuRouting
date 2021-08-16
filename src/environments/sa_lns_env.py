@@ -5,7 +5,7 @@ from typing import List
 
 import numpy as np
 
-from environments import LNSEnvironment
+from environments.lns_env import LNSEnvironment
 from nlns import LNSOperator
 from nlns.initial import nearest_neighbor_solution
 
@@ -29,7 +29,7 @@ class SimAnnealingLNSEnvironment(LNSEnvironment):
         t_max, t_factor, temp = 0, 0, 0
         criteria = {}
         # Repeat until the time limit of one reheating iteration is reached
-        while self.n_steps < self.max_steps and time.time() - reheating_time < self.time_limit / self.n_reheating:
+        while time.time() - reheating_time < self.time_limit / self.n_reheating:
             # Set a certain percentage of the data/solutions in the envs to the last accepted solution
             for i in range(int(self.reset_percentage * self.neighborhood_size)):
                 self.neighborhood[i] = deepcopy(self.solution)
@@ -47,5 +47,5 @@ class SimAnnealingLNSEnvironment(LNSEnvironment):
 
     def acceptance_criteria(self, criteria: dict) -> bool:
         current_cost = self.solution.cost()
-        cost, temp = criteria.values()
+        _, cost, temp = criteria.values()
         return cost < current_cost or np.random.rand() < math.exp(-(cost - current_cost) / temp)

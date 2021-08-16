@@ -1,6 +1,8 @@
 import argparse
-
+import sys
 import torch
+
+sys.path.append("src")
 
 from main.trainer import Trainer
 from utils.logging import MultipleLogger, ConsoleLogger, WandBLogger
@@ -9,13 +11,14 @@ parser = argparse.ArgumentParser(description='Train Neural VRP')
 parser.add_argument('-m', '--model', type=str, required=True)
 parser.add_argument('-o', '--opposite', type=str, required=False)
 parser.add_argument('-n', '--n_customers', type=int, required=True)
-parser.add_argument('-p', '--destroy_percentage', type=float, default=0.15)
-parser.add_argument('-ts', '--train_samples', type=int, default=10000)
+parser.add_argument('-p', '--destroy_percentage', type=float, required=True)
+parser.add_argument('-ts', '--train_samples', type=int, default=100000)
 parser.add_argument('-vs', '--val_samples', type=int, default=100)
 parser.add_argument('-dist', '--distribution', type=str, default="nazari")
-parser.add_argument('-bs', '--batch_size', type=int, default=64)
-parser.add_argument('-e', '--epochs', type=int, default=10)
-parser.add_argument('-ns', '--neighborhood_size', type=int, default=64)
+parser.add_argument('-bs', '--batch_size', type=int, default=256)
+parser.add_argument('-e', '--epochs', type=int, default=50)
+parser.add_argument('-vi', '--val_interval', type=int, required=False)
+parser.add_argument('-log', '--log_interval', type=int, required=False)
 
 args = parser.parse_args()
 
@@ -40,12 +43,20 @@ if __name__ == "__main__":
                     "batch_size": args.batch_size}
 
     if args.opposite is None:
-        train = trainer.train_env
+        train = trainer.train_environment
     else:
-        train_params = {**train_params,
-                        "opposite_name": args.opposite,
-                        "destroy_percentage": args.destroy_percentage,
-                        "neighborhood_size": args.neighborhood_size}
+        train_params["opposite_name"] = args.opposite
+        train_params["destroy_percentage"] = args.destroy_percentage
+
+        if args.log_interval is not None:
+            train_params["log_interval"] = args.log_interval
+
+        if args.val_interval is not None:
+            train_params["val_interval"] = args.val_interval
+
         train = trainer.train_procedure
 
+    print(train_params)
+
     train(**train_params)
+

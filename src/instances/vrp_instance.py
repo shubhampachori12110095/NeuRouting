@@ -45,10 +45,10 @@ class VRPInstance:
         adj[0, 0] = 5
         return adj
 
-    def plot(self, solution=None, ax=None):
+    def plot(self, solution=None, ax=None, title=None):
         if ax is None:
             ax = plt.gca()
-        plot_vrp(ax, self, solution)
+        plot_vrp(ax, self, title, solution)
 
     def to_networkx(self):
         coords = [self.depot] + self.customers

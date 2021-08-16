@@ -13,9 +13,9 @@ class DestroyTourBased(DestroyProcedure):
         assert 0 <= percentage <= 1
         self.percentage = percentage
         if point is None:
-            self.point = lambda _: np.random.rand(1, 2)
+            self.point = lambda: np.random.rand(1, 2)
         else:
-            self.point = point
+            self.point = lambda: point
 
     def __call__(self, solution: VRPSolution):
         # Make a dictionary that maps customers to tours
@@ -31,7 +31,7 @@ class DestroyTourBased(DestroyProcedure):
         n_to_remove = int(n * self.percentage)  # Number of customer that should be removed
         n_removed = 0
         customers = np.array(solution.instance.customers)
-        dist = np.sum((customers - self.point) ** 2, axis=1)
+        dist = np.sum((customers - self.point()) ** 2, axis=1)
         closest_customers = np.argsort(dist) + 1
         # Iterate over customers starting with the customer closest to the random point.
         for customer_idx in closest_customers:

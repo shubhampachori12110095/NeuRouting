@@ -44,7 +44,9 @@ class Evaluator:
                 inst_stats["time"] = solve_time
                 if isinstance(solver, VRPEnvironment):
                     inst_stats["steps"] = solver.n_steps
+                    inst_stats["improvements"] = solver.improvements
                 print(f"Instance {i} solved by {solver.name} with cost {inst_stats['cost']}")
+                solver.render()
         if self.render:
             plt.show()
         return stats

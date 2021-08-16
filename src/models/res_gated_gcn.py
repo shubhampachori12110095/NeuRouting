@@ -7,7 +7,6 @@ from utils.gcn_layers import ResidualGatedGCNLayer, MLP
 
 
 default_config = {
-    "num_nodes": 100,
     "node_dim": 3,
     "voc_nodes_in": 2,
     "voc_nodes_out": 2,
@@ -39,10 +38,9 @@ class ResidualGatedGCNModel(nn.Module):
                     config[key] = value
 
         # Define net parameters
-        self.num_nodes = config['num_nodes']
         self.node_dim = config['node_dim']
         self.voc_nodes_in = config['voc_nodes_in']
-        self.voc_nodes_out = config['num_nodes']  # config['voc_nodes_out']
+        self.voc_nodes_out = config['voc_nodes_out']
         self.voc_edges_in = config['voc_edges_in']
         self.voc_edges_out = config['voc_edges_out']
         self.hidden_dim = config['hidden_dim']
