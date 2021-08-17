@@ -37,6 +37,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
         self.rollout_steps = 10
         self.alpha = 1.0
+        self.rewards = []
         self.losses_critic = []
         self.losses_actor = []
         self.losses = []
@@ -86,8 +87,10 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         actor_loss = np.mean(self.losses_actor[-log_interval:])
         loss = np.mean(self.losses[-log_interval:])
         entropy = np.mean(self.entropies[-log_interval:])
+        mean_reward = np.mean(self.rewards[-log_interval:])
         return {"epoch": epoch + 1,
                 "batch_idx": batch_idx + 1,
+                "mean_reward": mean_reward,
                 "actor_loss": actor_loss,
                 "critic_loss": critic_loss,
                 "loss": loss,
@@ -117,7 +120,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
                     sol.destroy_nodes(to_remove)
                 repair_procedure.multiple(solutions)
 
-                new_all_nodes, new_all_edges, rewards = [], [], []
+                new_all_nodes, new_all_edges, batch_rewards = [], [], []
                 for j, sol in enumerate(solutions):
                     new_cost = sol.cost()
                     if new_cost < prev_costs[j]:
@@ -127,15 +130,15 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
                         solutions[j] = backup_copies[j]
                     new_all_nodes.append(nodes)
                     new_all_edges.append(edges)
-                    rewards.append(prev_costs[j] - new_cost)
+                    batch_rewards.append(prev_costs[j] - new_cost)
+                batch_rewards = np.array(batch_rewards)
+                batch_rewards = reward_norm(batch_rewards)
 
-                rewards = np.array(rewards)
-                rewards = reward_norm(rewards)
-
-                buffer.obs(all_nodes, all_edges, actions.cpu().numpy(), rewards, log_p.cpu().numpy(), values.cpu().numpy())
+                buffer.obs(all_nodes, all_edges, actions.cpu().numpy(), batch_rewards,
+                           log_p.cpu().numpy(), values.cpu().numpy())
                 all_nodes, all_edges = new_all_nodes, new_all_edges
-
-            return buffer.generate_dataset()
+        self.rewards.append(batch_rewards.mean())
+        return buffer.generate_dataset()
 
     @staticmethod
     def features(solution: VRPSolution) -> Tuple[np.ndarray, np.ndarray]:
