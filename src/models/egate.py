@@ -84,7 +84,7 @@ class Decoder(nn.Module):
         _input = encoder_inputs.new_zeros((encoder_inputs.size(0), encoder_inputs.size(2)))
         mask = encoder_inputs.new_zeros((encoder_inputs.size(0), encoder_inputs.size(1)))
         log_ps = []
-        entropys = []
+        entropies = []
 
         actions = actions.transpose(0, 1)
         for act in actions:
@@ -100,12 +100,12 @@ class Decoder(nn.Module):
                                   act.unsqueeze(-1).unsqueeze(-1).expand(encoder_inputs.size(0), -1,
                                                                          encoder_inputs.size(2))
                                   ).squeeze(1)
-            entropys.append(entropy)
+            entropies.append(entropy)
 
         log_ps = torch.stack(log_ps, 1)
-        entropys = torch.stack(entropys, 1)
+        entropies = torch.stack(entropies, 1)
         log_p = log_ps.sum(dim=1)
-        entropy = entropys.mean(dim=1)
+        entropy = entropies.mean(dim=1)
 
         return log_p, entropy
 
@@ -114,7 +114,7 @@ class Decoder(nn.Module):
         mask = encoder_inputs.new_zeros((encoder_inputs.size(0), encoder_inputs.size(1)))
         log_ps = []
         actions = []
-        entropys = []
+        entropies = []
 
         for i in range(n_steps):
             hx = self.cell(_input, hx)
@@ -130,7 +130,7 @@ class Decoder(nn.Module):
             actions.append(index)
             log_p = dist.log_prob(index)
             log_ps.append(log_p)
-            entropys.append(entropy)
+            entropies.append(entropy)
 
             mask = mask.scatter(1, index.unsqueeze(-1).expand(mask.size(0), -1), 1)
             _input = torch.gather(encoder_inputs, 1,
@@ -139,9 +139,9 @@ class Decoder(nn.Module):
 
         log_ps = torch.stack(log_ps, 1)
         actions = torch.stack(actions, 1)
-        entropys = torch.stack(entropys, 1)
+        entropies = torch.stack(entropies, 1)
         log_p = log_ps.sum(dim=1)
-        entropy = entropys.mean(dim=1)
+        entropy = entropies.mean(dim=1)
         return actions, log_p, entropy
 
 
@@ -154,8 +154,8 @@ class EgateModel(nn.Module):
         self.v1 = nn.Linear(hidden_node_dim, hidden_node_dim)
         self.v2 = nn.Linear(hidden_node_dim, 1)
 
-    def forward(self, datas, steps, greedy=False):
-        x = self.encoder(datas)
+    def forward(self, data_batch, steps, greedy=False):
+        x = self.encoder(data_batch)
         x = x[:, 1:, :]
         pooled = x.mean(dim=1)
         actions, log_p, entropy = self.decoder(x, pooled, steps, greedy)
@@ -164,8 +164,8 @@ class EgateModel(nn.Module):
         v = v.squeeze(-1)
         return actions, log_p, v, entropy
 
-    def evaluate(self, datas, actions):
-        x = self.encoder(datas)
+    def evaluate(self, data_batch, actions):
+        x = self.encoder(data_batch)
         x = x[:, 1:, :]
         pooled = x.mean(dim=1)
         log_p, entropy = self.decoder.evaluate(x, pooled, actions)

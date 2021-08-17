@@ -22,6 +22,7 @@ class NeuralProcedure(LNSProcedure):
         self.device = device
         self.logger = logger
         self.val_env = None
+        self._val_phase = False
 
     def train(self,
               train_instances: List[VRPInstance],
@@ -94,6 +95,7 @@ class NeuralProcedure(LNSProcedure):
         # Fix the seed to reduce the sources of randomness while evaluating the model
         np.random.seed(42)
         torch.manual_seed(42)
+        self._val_phase = True
         if self.val_env is None:
             if isinstance(opposite_procedure, RepairProcedure) and isinstance(self, DestroyProcedure):
                 self.val_env = BatchLNSEnvironment(batch_size, [LNSOperator(self, opposite_procedure)], initial)
@@ -102,7 +104,9 @@ class NeuralProcedure(LNSProcedure):
             else:
                 self.val_env = None
             assert self.val_env is not None, f"{opposite_procedure} and {self} should be two opposite LNS procedures."
-        return self.val_env.solve(instances, max_steps=steps)
+        solutions = self.val_env.solve(instances, max_steps=steps)
+        self._val_phase = False
+        return solutions
 
     def load_model(self, ckpt_path: str):
         ckpt = torch.load(ckpt_path, self.device)
