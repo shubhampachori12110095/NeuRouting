@@ -16,7 +16,7 @@ class SCIPRepair(RepairProcedure):
         self.time_limit = time_limit
 
     @staticmethod
-    def _get_solution_edges(model: Model) -> List[tuple]:
+    def get_solution_edges(model: Model) -> List[tuple]:
         assignment = {var.name: model.getVal(var) for var in model.getVars() if 'x' in var.name}
         return [tuple([int(n) for n in re.findall(r'\d+', name)])
                 for name, val in assignment.items() if val > 0.99]
@@ -38,6 +38,6 @@ class SCIPRepair(RepairProcedure):
             sub_mip.fixVar(varname2var[f'x({x}, {y})'], 1)
         sub_mip.setParam("limits/time", self.time_limit)
         sub_mip.optimize()
-        new_sol = VRPSolution.from_edges(partial_solution.instance, self._get_solution_edges(sub_mip))
+        new_sol = VRPSolution.from_edges(partial_solution.instance, self.get_solution_edges(sub_mip))
         partial_solution.routes = new_sol.routes
         return new_sol

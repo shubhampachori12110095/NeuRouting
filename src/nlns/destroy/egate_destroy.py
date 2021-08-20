@@ -26,7 +26,7 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         nodes, edges = zip(*[self.features(sol) for sol in solutions])
         dataset = Buffer.to_dataset(nodes, edges).to(self.device)
         actions, log_p, values, entropy = self.model(dataset, n_remove, greedy=self._val_phase)
-        to_remove = actions.squeeze().tolist()
+        to_remove = actions.tolist()
         for sol, remove in zip(solutions, to_remove):
             sol.destroy_nodes(remove)
 

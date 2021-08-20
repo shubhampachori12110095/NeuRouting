@@ -4,12 +4,8 @@ import torch_geometric
 
 
 class BipartiteGCNModel(nn.Module):
-    def __init__(self):
+    def __init__(self, emb_size=64, cons_nfeats=5, edge_nfeats=1, var_nfeats=19):
         super().__init__()
-        emb_size = 64
-        cons_nfeats = 5
-        edge_nfeats = 1
-        var_nfeats = 19
 
         # CONSTRAINT EMBEDDING
         self.cons_embedding = nn.Sequential(

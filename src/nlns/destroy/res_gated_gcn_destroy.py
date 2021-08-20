@@ -44,9 +44,10 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
             # plot_heatmap(plt.gca(), sol.instance, heatmap)
             # plt.show()
             n_remove = int(sol.instance.n_customers * self.percentage)
-            to_remove = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
-            # sol.destroy_edges(sol_edges[to_remove])
-            to_remove = list(set([node for edge in to_remove for node in edge]))
+            to_remove_idx = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
+            # to_remove = sol_edges[to_remove_idx]
+            # sol.destroy_edges(to_remove)
+            to_remove = list(set([node for edge in sol_edges[to_remove_idx] for node in edge]))
             sol.destroy_nodes(to_remove)
 
     def __call__(self, solution: VRPSolution):
