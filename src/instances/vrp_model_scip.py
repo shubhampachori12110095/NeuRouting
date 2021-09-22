@@ -1,7 +1,13 @@
+import re
+from builtins import staticmethod
+
 import pyscipopt
+from matplotlib import pyplot as plt
 from pyscipopt import Model, quicksum
 
-from instances import VRPInstance
+from instances import VRPInstance, VRPSolution
+from nlns.initial import nearest_neighbor_solution
+from utils.io import read_vrp
 
 
 class VRPModelSCIP(Model):
@@ -46,6 +52,7 @@ class VRPModelSCIP(Model):
             self.addCons(u[i - 1] <= Q)
 
         self.data = x
+        self.varname2var = {v.name: v for v in self.getVars() if 'x' in v.name}
 
         heuristics = ['alns', 'rins', 'rens', 'dins', 'gins', 'clique', 'lpface', 'crossover', 'mutation',
                       'vbounds', 'trustregion', 'localbranching'] if lns_only else None
@@ -60,8 +67,8 @@ class VRPModelSCIP(Model):
         self.setIntParam('randomization/randomseedshift', seed)
 
         # presolving
-        self.setIntParam('presolving/maxrestarts', 0)
-        self.setIntParam('presolving/maxrounds', 0)
+        # self.setIntParam('presolving/maxrestarts', 0)
+        # self.setIntParam('presolving/maxrounds', 0)
 
         # disable separating (cuts)
         self.setIntParam('separating/maxroundsroot', 0)
@@ -88,3 +95,31 @@ class VRPModelSCIP(Model):
         # re-enable only the desired ones
         for h in heuristics:
             self.setParam('heuristics/' + h + '/freq', frequency[h] if frequency[h] > 0 else 1)
+
+    def setSolution(self, solution: VRPSolution):
+        new_sol = self.createPartialSol()
+        edges = solution.as_edges()
+        for c1, c2 in self.data.keys():
+            self.setSolVal(new_sol, self.varname2var[f"x({c1}, {c2})"], 1 if (c1, c2) in edges else 0)
+        self.addSol(new_sol)
+
+    @staticmethod
+    def vars_to_edges(edges_vars):
+        return [tuple([int(n) for n in re.findall(r'\d+', str(edge))]) for edge in edges_vars]
+
+
+if __name__ == "__main__":
+    inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
+    sol = nearest_neighbor_solution(inst)
+    inst.plot(sol)
+    plt.show()
+    scip_model = VRPModelSCIP(inst)
+    # scip_model.setSolution(sol)
+    scip_sol = scip_model.getBestSol()
+    scip_model.setParam("limits/time", 20)
+    scip_model.optimize()
+    edges_vars = [var for var in scip_model.getVars() if scip_model.getVal(var) > 0.99 and 'x' in str(var)]
+    edges = VRPModelSCIP.vars_to_edges(edges_vars)
+    opt_sol = VRPSolution.from_edges(inst, edges)
+    inst.plot(opt_sol)
+    plt.show()

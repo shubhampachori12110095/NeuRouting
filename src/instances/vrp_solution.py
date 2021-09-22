@@ -89,6 +89,9 @@ class VRPSolution:
             adj[j][i] = 1
         return adj
 
+    def isolated_customers(self) -> List[int]:
+        return [route[0] for route in self.routes if len(route) == 1]
+
     def missing_customers(self) -> List[int]:
         missing = set()
         for route in self.routes:

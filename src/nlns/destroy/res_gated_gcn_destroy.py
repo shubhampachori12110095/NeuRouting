@@ -2,6 +2,7 @@ from typing import List
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from torch import nn
 import torch.nn.functional as F
 from sklearn.utils import compute_class_weight
@@ -13,6 +14,7 @@ from instances import VRPSolution
 from nlns import DestroyProcedure
 from nlns.neural import NeuralProcedure
 from models import ResidualGatedGCNModel
+from utils.visualize import plot_heatmap
 
 
 class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
@@ -24,30 +26,64 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         self.edges_probs = None
         self.percentage = percentage
 
+    @staticmethod
+    def plot_solution_heatmap(instance, sol_edges, sol_edges_probs):
+        n_nodes = instance.n_customers + 1
+        heatmap = np.zeros((n_nodes, n_nodes))
+        pos_heatmap = np.zeros((n_nodes, n_nodes))
+        for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
+            heatmap[c1, c2] = prob
+            heatmap[c2, c1] = prob
+            pos_heatmap[c1, c2] = 1 - prob
+            pos_heatmap[c2, c1] = 1 - prob
+        # plot_heatmap(plt.gca(), instance, pos_heatmap, title="Solution positive heatmap")
+        # plt.show()
+        plot_heatmap(plt.gca(), instance, heatmap, title="Solution negative heatmap")
+        plt.show()
+
+    def to_remove_edges(self, sol_edges, sol_edges_probs, n_nodes):
+        sol_edges_probs_norm = sol_edges_probs / sol_edges_probs.sum()
+        n_remove = int(n_nodes * self.percentage)
+        cand_edges = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
+        to_remove = set()
+        for i in cand_edges:
+            c1, c2 = sol_edges[i]
+            c1 = c2 if c1 == 0 else c1
+            c2 = c1 if c2 == 0 else c2
+            if len(to_remove) < n_remove:
+                to_remove.add(c1)
+                to_remove.add(c2)
+            else:
+                break
+        return list(to_remove)
+
+    def to_remove_nodes(self, sol_edges, sol_edges_probs, n_nodes):
+        sol_nodes_probs = np.zeros(n_nodes)
+        n_remove = int(n_nodes * self.percentage)
+        for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
+            sol_nodes_probs[c1] += prob if c1 != 0 else 0
+            sol_nodes_probs[c2] += prob if c2 != 0 else 0
+        sol_nodes_probs_norm = sol_nodes_probs / sol_nodes_probs.sum()
+        return np.random.choice(range(n_nodes), size=n_remove, p=sol_nodes_probs_norm, replace=False)
+
     def multiple(self, solutions: List[VRPSolution]):
         instances = [sol.instance for sol in solutions]
         if self.current_instances is None or instances != self.current_instances:
             self.current_instances = instances
             edges_preds, _ = self.model.forward(*self.features(instances))
             prob_preds = torch.log_softmax(edges_preds, -1)[:, :, :, -1].to(self.device)
-            self.edges_probs = np.exp(prob_preds)
+            self.edges_probs = np.exp(prob_preds.detach().numpy())
 
         for sol, probs in zip(solutions, self.edges_probs):
             sol.verify()
             sol_edges = np.array(sol.as_edges())
-            sol_edges_probs = np.array([1 - probs[c1, c2].numpy() for c1, c2 in sol_edges])
-            sol_edges_probs_norm = sol_edges_probs / sol_edges_probs.sum()
-            # n_nodes = sol.instance.n_customers + 1
-            # heatmap = np.zeros((n_nodes, n_nodes))
-            # for (c1, c2), prob in zip(sol_edges, sol_edges_probs):
-            #    heatmap[c1, c2] = prob
-            # plot_heatmap(plt.gca(), sol.instance, heatmap)
-            # plt.show()
-            n_remove = int(sol.instance.n_customers * self.percentage)
-            to_remove_idx = np.random.choice(range(len(sol_edges)), size=n_remove, p=sol_edges_probs_norm, replace=False)
-            # to_remove = sol_edges[to_remove_idx]
-            # sol.destroy_edges(to_remove)
-            to_remove = list(set([node for edge in sol_edges[to_remove_idx] for node in edge]))
+            sol_edges_probs = np.array([1 - probs[c1, c2] for c1, c2 in sol_edges])
+            n_nodes = sol.instance.n_customers + 1
+
+            # self.plot_solution_heatmap(sol.instance, sol_edges, sol_edges_probs)
+
+            to_remove = self.to_remove_nodes(sol_edges, sol_edges_probs, n_nodes)
+            # print(to_remove)
             sol.destroy_nodes(to_remove)
 
     def __call__(self, solution: VRPSolution):

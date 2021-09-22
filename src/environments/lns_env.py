@@ -1,5 +1,6 @@
 import time
 from copy import deepcopy
+
 import numpy as np
 import torch
 from typing import List, Tuple
@@ -21,11 +22,12 @@ class LargeNeighborhoodSearch:
         self.operators = operators
         self.n_operators = len(operators)
         self.adaptive = adaptive
-        self.performances = [np.inf] * self.n_operators if adaptive else None
+        self.performances = np.array([1.0 / self.n_operators] * self.n_operators) if adaptive else None
 
     def select_operator_pair(self) -> Tuple[DestroyProcedure, RepairProcedure, int]:
         if self.adaptive:
-            idx = np.argmax(self.performances)
+            probs = self.performances / self.performances.sum()
+            idx = np.random.choice(range(self.n_operators), p=probs)
         else:
             idx = np.random.randint(0, self.n_operators)
         return self.operators[idx].destroy, self.operators[idx].repair, idx
@@ -51,7 +53,8 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
             self.solution = VRPNeuralSolution.from_solution(self.solution)
         self.incumbent_solution = self.solution
-        # self.render()
+        # self.instance.plot(self.solution, title="Initial")
+        # plt.show()
 
     def step(self) -> dict:
         current_cost = self.solution.cost()
@@ -93,12 +96,11 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
                 self.incumbent_solution = deepcopy(self.neighborhood[criteria["best_idx"]])
                 self.incumbent_solution.verify()
                 self.improvements += 1
-                # self.render()
 
             if self.acceptance_criteria(criteria):
                 self.solution = deepcopy(self.neighborhood[criteria["best_idx"]])
                 self.solution.verify()
-
+        self.solution = self.incumbent_solution
         return self.solution
 
     def acceptance_criteria(self, criteria: dict) -> bool:
