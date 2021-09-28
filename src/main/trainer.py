@@ -1,7 +1,7 @@
 from typing import Optional
 
 from generators import generate_multiple_instances
-from nlns.builder import destroy_procedures, repair_procedures, neural_envs, neural_models, get_neural_procedure
+from nlns.builder import destroy_procedures, repair_procedures, neural_models, get_neural_procedure
 from models import VRPCriticModel
 from utils.logging import Logger
 
@@ -29,17 +29,7 @@ class Trainer:
         self.ckpt_path = ckpt_path
         self.logger = logger
 
-    def train_environment(self, model_name: str, batch_size: int, epochs: int):
-        neural_env, model = neural_envs[model_name], neural_models[model_name]
-        neural_env = neural_env(model, self.device, self.logger)
-        ckpt_file = self.ckpt_path + f"env_{model_name}_n{self.n_customers}.pt"
-        return neural_env.train(train_instances=self.train_instances,
-                                val_instances=self.val_instances,
-                                n_epochs=epochs,
-                                batch_size=batch_size,
-                                ckpt_path=ckpt_file)
-
-    def train_procedure(self, model_name: str, opposite_name: str, epochs: int, batch_size: int, destroy_percentage: float,
+    def train(self, model_name: str, opposite_name: str, epochs: int, batch_size: int, destroy_percentage: float,
                         log_interval: Optional[int] = None, val_interval: Optional[int] = None):
         neural_proc, model, _ = get_neural_procedure(model_name, opposite_name, destroy_percentage, self.ckpt_path)
         if model_name in destroy_procedures.keys():

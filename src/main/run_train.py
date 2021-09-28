@@ -28,8 +28,8 @@ if __name__ == "__main__":
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} for training.")
 
-    # logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
-    logger = ConsoleLogger()
+    logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
+    # logger = ConsoleLogger()
 
     trainer = Trainer(n_customers=args.n_customers,
                       n_train_instances=args.train_samples,
@@ -38,23 +38,13 @@ if __name__ == "__main__":
                       device=device,
                       logger=logger)
 
-    train_params = {"model_name": args.model,
-                    "epochs": args.epochs,
-                    "batch_size": args.batch_size}
+    train_params = {"model_name": args.model, "epochs": args.epochs, "batch_size": args.batch_size,
+                    "opposite_name": args.opposite, "destroy_percentage": args.destroy_percentage}
 
-    if args.opposite is None:
-        train = trainer.train_environment
-    else:
-        train_params["opposite_name"] = args.opposite
-        train_params["destroy_percentage"] = args.destroy_percentage
+    if args.log_interval is not None:
+        train_params["log_interval"] = args.log_interval
 
-        if args.log_interval is not None:
-            train_params["log_interval"] = args.log_interval
+    if args.val_interval is not None:
+        train_params["val_interval"] = args.val_interval
 
-        if args.val_interval is not None:
-            train_params["val_interval"] = args.val_interval
-
-        train = trainer.train_procedure
-
-    train(**train_params)
-
+    trainer.train(**train_params)

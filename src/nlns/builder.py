@@ -6,25 +6,19 @@ import numpy as np
 
 from environments.lns_env import LNSEnvironment
 from environments.sa_lns_env import SimAnnealingLNSEnvironment
-from vrpecole.gcn_ecole_env import GCNEcoleEnvironment
 
 from nlns import LNSOperator
 from nlns.initial import nearest_neighbor_solution
-
 from nlns.destroy import DestroyRandom, DestroyPointBased, DestroyTourBased, ResidualGatedGCNDestroy
 from nlns.repair import GreedyRepair, SCIPRepair, RLAgentRepair
-from egate.egate_destroy import EgateDestroy
 
 from models import ResidualGatedGCNModel, VRPActorModel
-from egate.egate_model import EgateModel
-from vrpecole.bipartite_gcn import BipartiteGCNModel
 
 
 destroy_procedures = {
     "random": DestroyRandom,
     "point": DestroyPointBased,
     "tour": DestroyTourBased,
-    "egate": EgateDestroy,
     "resgatedgcn": ResidualGatedGCNDestroy,
 }
 
@@ -35,14 +29,8 @@ repair_procedures = {
 }
 
 neural_models = {
-    "bipartite_gcn": BipartiteGCNModel(),
-    "egate": EgateModel(),
     "resgatedgcn": ResidualGatedGCNModel(),
     "rlagent": VRPActorModel(),
-}
-
-neural_envs = {
-    "bipartite_gcn": GCNEcoleEnvironment,
 }
 
 
@@ -96,7 +84,7 @@ def get_lns_operator(destroy_name: str,
 
 def get_neural_procedure(neural_name: str, opposite_name: str, percentage: float, ckpt_path: str):
     assert neural_name in neural_models.keys(), \
-        f"Unknown neural environment {neural_name}, select one between {neural_models.keys()}."
+        f"Unknown neural procedure {neural_name}, select one between {neural_models.keys()}."
 
     neural_proc = repair_procedures[neural_name] if opposite_name in destroy_procedures.keys() \
         else destroy_procedures[neural_name]

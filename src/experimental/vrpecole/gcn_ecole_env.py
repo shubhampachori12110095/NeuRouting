@@ -121,7 +121,7 @@ class GCNEcoleEnvironment(EcoleEnvironment):
 
 
 if __name__ == "__main__":
-    inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
+    inst = read_vrp("../../../res/A-n32-k5.vrp", grid_dim=100)
     default = SCIPSolver(lns_only=True)
     # default_sol = default.solve(inst, time_limit=30)
     # inst.plot(default_sol)
