@@ -6,12 +6,18 @@ import numpy as np
 
 from environments.lns_env import LNSEnvironment
 from environments.sa_lns_env import SimAnnealingLNSEnvironment
-# from environments.gcn_ecole_env import GCNEcoleEnvironment
+from vrpecole.gcn_ecole_env import GCNEcoleEnvironment
+
 from nlns import LNSOperator
 from nlns.initial import nearest_neighbor_solution
-from nlns.destroy import *
-from nlns.repair import *
-from models import EgateModel, ResidualGatedGCNModel, VRPActorModel, BipartiteGCNModel
+
+from nlns.destroy import DestroyRandom, DestroyPointBased, DestroyTourBased, ResidualGatedGCNDestroy
+from nlns.repair import GreedyRepair, SCIPRepair, RLAgentRepair
+from egate.egate_destroy import EgateDestroy
+
+from models import ResidualGatedGCNModel, VRPActorModel
+from egate.egate_model import EgateModel
+from vrpecole.bipartite_gcn import BipartiteGCNModel
 
 
 destroy_procedures = {
@@ -36,7 +42,7 @@ neural_models = {
 }
 
 neural_envs = {
-    # "bipartite_gcn": GCNEcoleEnvironment,
+    "bipartite_gcn": GCNEcoleEnvironment,
 }
 
 

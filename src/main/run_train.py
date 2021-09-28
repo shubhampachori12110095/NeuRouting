@@ -28,8 +28,8 @@ if __name__ == "__main__":
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} for training.")
 
-    logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
-    # logger = ConsoleLogger()
+    # logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
+    logger = ConsoleLogger()
 
     trainer = Trainer(n_customers=args.n_customers,
                       n_train_instances=args.train_samples,
@@ -55,8 +55,6 @@ if __name__ == "__main__":
             train_params["val_interval"] = args.val_interval
 
         train = trainer.train_procedure
-
-    print(train_params)
 
     train(**train_params)
 

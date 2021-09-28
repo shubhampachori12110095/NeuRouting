@@ -9,9 +9,9 @@ from torch_geometric.data import DataLoader
 from instances import VRPSolution
 from nlns import DestroyProcedure
 from nlns.neural import NeuralProcedure
-from utils.buffer import Buffer
-from utils.running_mean_std import RunningMeanStd
-from models import EgateModel
+from buffer import Buffer
+from running_mean_std import RunningMeanStd
+from egate_model import EgateModel
 
 
 class EgateDestroy(NeuralProcedure, DestroyProcedure):
@@ -148,10 +148,10 @@ class EgateDestroy(NeuralProcedure, DestroyProcedure):
         for i in range(1, n):
             sol_route = solution.get_customer_route(i)
             nodes[i] = [float(inst.demands[i - 1]) / inst.capacity,
-                        float(sol_route.demand_till_customer(i)) / inst.capacity,
                         float(sol_route.total_demand()) / inst.capacity,
-                        sol_route.distance_till_customer(i),
-                        sol_route.total_distance()]
+                        float(sol_route.demand_till_customer(i)) / inst.capacity,
+                        sol_route.distance_till_customer(i) / 2**0.5,
+                        sol_route.total_distance() / 2**0.5]
         edges = np.zeros((n, n))
         for i, j in solution.as_edges():
             edges[i][j] = 1

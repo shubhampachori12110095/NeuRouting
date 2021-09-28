@@ -1,18 +1,11 @@
-import re
 import time
 from abc import abstractmethod
+from typing import Optional
 
 import ecole
-import numpy as np
-import torch
-from ecole.environment import Branching
-from ecole.observation import NodeBipartite
-from matplotlib import pyplot as plt
 
 from environments import VRPEnvironment
 from instances import VRPInstance, VRPSolution, VRPModelSCIP
-from models.bipartite_gcn import BipartiteGCNModel
-from utils.io import read_vrp
 
 
 class VRPInfo:
@@ -22,7 +15,7 @@ class VRPInfo:
     def extract(self, model: ecole.scip.Model, done: bool):
         scip_model = model.as_pyscipopt()
         edges_vars = [var for var in scip_model.getVars() if scip_model.getVal(var) > 0.99 and 'x' in str(var)]
-        return [tuple([int(n) for n in re.findall(r'\d+', str(edge))]) for edge in edges_vars]
+        return VRPModelSCIP.vars_to_edges(edges_vars)
 
 
 class EcoleEnvironment(VRPEnvironment):
@@ -35,17 +28,19 @@ class EcoleEnvironment(VRPEnvironment):
         self.action_set = None
         self.reward = None
 
-    def reset(self, instance: VRPInstance):
+    def reset(self, instance: VRPInstance, initial: Optional[VRPSolution] = None):
         super(EcoleEnvironment, self).reset(instance)
-        self.scip_model = ecole.scip.Model.from_pyscipopt(VRPModelSCIP(instance))
-        return self.env.reset(self.scip_model)
+        self.scip_model = VRPModelSCIP(instance, lns_only=True)
+        if initial is not None:
+            self.scip_model.setSolution(initial)
+        return self.env.reset(ecole.scip.Model.from_pyscipopt(self.scip_model))
 
     @abstractmethod
     def step(self):
         pass
 
-    def solve(self, instance: VRPInstance, time_limit=None, max_steps=None) -> VRPSolution:
-        self.obs, self.action_set, self.reward, done, edges = self.reset(instance)
+    def solve(self, instance: VRPInstance, initial: VRPSolution = None, time_limit=None, max_steps=None) -> VRPSolution:
+        self.obs, self.action_set, self.reward, done, edges = self.reset(instance, initial)
         self.solution = VRPSolution.from_edges(self.instance, edges)
 
         self.max_steps = max_steps if max_steps is not None else self.max_steps

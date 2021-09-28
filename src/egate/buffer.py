@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch_geometric.data import Data, DataLoader, Dataset
+from torch_geometric.data import Data, DataLoader
 
 
 class Buffer:

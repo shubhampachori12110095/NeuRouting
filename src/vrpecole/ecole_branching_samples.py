@@ -10,7 +10,7 @@ from ecole.core.observation import NodeBipartite
 from ecole.environment import Branching
 
 from instances import VRPInstance, VRPModelSCIP
-from utils.explore_strong_branch import ExploreThenStrongBranch
+from explore_strong_branch import ExploreThenStrongBranch
 
 
 def generate_branching_samples(instances: List[VRPInstance], n_samples_instance: int, folder: str = "samples", seed: int = 0):

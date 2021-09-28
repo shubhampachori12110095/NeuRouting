@@ -47,7 +47,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         self.neighborhood = None
         self.neighborhood_costs = None
 
-    def reset(self, instance: VRPInstance):
+    def reset(self, instance: VRPInstance, **args):
         super(LNSEnvironment, self).reset(instance)
         self.solution = self.initial(instance)
         if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
@@ -96,6 +96,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
                 self.incumbent_solution = deepcopy(self.neighborhood[criteria["best_idx"]])
                 self.incumbent_solution.verify()
                 self.improvements += 1
+                # self.render()
 
             if self.acceptance_criteria(criteria):
                 self.solution = deepcopy(self.neighborhood[criteria["best_idx"]])

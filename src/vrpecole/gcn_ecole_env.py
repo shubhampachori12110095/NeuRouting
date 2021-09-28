@@ -10,11 +10,13 @@ from ecole.environment import Branching
 from matplotlib import pyplot as plt
 from torch_geometric.data import DataLoader
 
-from environments.ecole_env import EcoleEnvironment, VRPInfo
-from generators.ecole_branching_samples import generate_branching_samples
+from baselines import SCIPSolver
+from ecole_env import EcoleEnvironment, VRPInfo
+from ecole_branching_samples import generate_branching_samples
 from instances import VRPInstance
-from models.bipartite_gcn import BipartiteGCNModel
-from utils.bipartite_graph_data import GraphDataset
+from bipartite_gcn import BipartiteGCNModel
+from bipartite_graph_data import GraphDataset
+from nlns.initial import nearest_neighbor_solution
 from utils.io import read_vrp
 from utils.logging import Logger
 
@@ -24,9 +26,14 @@ class GCNEcoleEnvironment(EcoleEnvironment):
         super().__init__(base_env=Branching(observation_function=NodeBipartite(),
                                             information_function=VRPInfo()),
                          name="GCN Ecole")
+        self.unfixed_vars = []
         self.model = model.to(device)
         self.device = device
         self.logger = logger
+
+    def reset(self, instance, initial=None):
+        self.unfixed_vars = []
+        return super(GCNEcoleEnvironment, self).reset(instance, initial)
 
     def step(self):
         with torch.no_grad():
@@ -38,6 +45,7 @@ class GCNEcoleEnvironment(EcoleEnvironment):
                                 torch.from_numpy(edge_feats.values.astype(np.float32)).view(-1, 1).to(self.device),
                                 torch.from_numpy(col_feats.astype(np.float32)).to(self.device))
             action = self.action_set[logits[self.action_set.astype(np.int64)].argmax()]
+            self.unfixed_vars.append(self.scip_model.getVars()[action])
             return self.env.step(action)
 
     def train(self, train_instances: List[VRPInstance], val_instances: List[VRPInstance],
@@ -114,7 +122,11 @@ class GCNEcoleEnvironment(EcoleEnvironment):
 
 if __name__ == "__main__":
     inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
+    default = SCIPSolver(lns_only=True)
+    # default_sol = default.solve(inst, time_limit=30)
+    # inst.plot(default_sol)
+    # plt.show()
     scipsolver = GCNEcoleEnvironment(BipartiteGCNModel())
-    sol = scipsolver.solve(inst, time_limit=10, max_steps=100)
-    inst.plot(sol)
+    gcn_sol = scipsolver.solve(inst, initial=nearest_neighbor_solution(inst), time_limit=10)
+    inst.plot(gcn_sol)
     plt.show()

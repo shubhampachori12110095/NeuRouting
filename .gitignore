@@ -1,5 +1,6 @@
 .idea
-pretrained
+pretrained/*.pt
+pretrained/*.tar
 LKH3
 *.pkl
 wandb

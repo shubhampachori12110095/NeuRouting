@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 
-from utils.gcn_layers import ResidualGatedGCNLayer, MLP
+from models.gcn_layers import ResidualGatedGCNLayer, MLP
 
 
 default_config = {

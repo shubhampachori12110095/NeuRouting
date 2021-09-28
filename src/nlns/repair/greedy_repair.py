@@ -1,10 +1,7 @@
 import numpy as np
 
-from environments.lns_env import LNSEnvironment
-from generators import generate_instance
 from instances import VRPSolution
-from nlns import RepairProcedure, LNSOperator
-from nlns.destroy import DestroyRandom
+from nlns import RepairProcedure
 from nlns.initial.nearest_neighbor import closest_locations
 
 
@@ -34,9 +31,3 @@ class GreedyRepair(RepairProcedure):
                     cust_route.append_route(neigh_route, self_head, neigh_head)
                     solution.routes.remove(neigh_route)
                     break
-
-
-if __name__ == "__main__":
-    inst = generate_instance(n_customers=50, seed=12)
-    env = LNSEnvironment([LNSOperator(DestroyRandom(0.05), GreedyRepair())], neighborhood_size=50)
-    env.solve(inst, 50, 60)

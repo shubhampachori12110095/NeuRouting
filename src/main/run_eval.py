@@ -8,7 +8,7 @@ from main.evaluator import Evaluator
 from nlns.builder import nlns_builder
 
 if __name__ == "__main__":
-    n_customers = 50
+    n_customers = 100
     n_instances = 100
     max_steps = n_customers
     time_limit = 60
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     destroy_operators = {"point": [0.15, 0.25], "tour": [0.15, 0.25]}
 
     greedy_env = nlns_builder(destroy_operators, ["greedy"], neigh_size,
-                              simulated_annehaling=True, ckpt_path=ckpt_path, name="Greedy")
+                              simulated_annehaling=False, ckpt_path=ckpt_path, name="Greedy")
     rlagent_env = nlns_builder(destroy_operators, ["rlagent"], neigh_size,
                                simulated_annehaling=False, ckpt_path=ckpt_path, name="RL Agent")
     scip_solver = SCIPSolver()
