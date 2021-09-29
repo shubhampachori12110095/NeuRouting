@@ -1,9 +1,11 @@
 from typing import List, Tuple
 
 import numpy as np
+from matplotlib import pyplot as plt
 from more_itertools import split_after
 
 from instances.vrp_instance import VRPInstance
+from utils.visualize import plot_solution
 
 
 class Route(List[int]):
@@ -184,6 +186,11 @@ class VRPSolution:
             if postsplit != [0]:
                 postsplit = Route(postsplit, self.instance)
                 self.routes.append(postsplit)
+
+    def plot(self, ax=None, title=None):
+        if ax is None:
+            ax = plt.gca()
+        plot_solution(ax, self, title)
 
     def __deepcopy__(self, memo):
         routes_copy = [Route(route[:], self.instance) for route in self.routes]

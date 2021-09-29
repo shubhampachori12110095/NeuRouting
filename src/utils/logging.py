@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from numbers import Number
 from typing import Dict, List
-from torch import nn
 
 import wandb
 

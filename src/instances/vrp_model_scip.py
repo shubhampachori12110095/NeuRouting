@@ -7,7 +7,7 @@ from pyscipopt import Model, quicksum
 
 from instances import VRPInstance, VRPSolution
 from nlns.initial import nearest_neighbor_solution
-from utils.io import read_vrp
+from utils.vrp_io import read_vrp
 
 
 class VRPModelSCIP(Model):

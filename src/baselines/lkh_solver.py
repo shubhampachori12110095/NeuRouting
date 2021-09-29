@@ -4,7 +4,7 @@ from subprocess import check_output
 
 from environments import VRPSolver
 from instances import VRPSolution, Route, VRPInstance
-from utils.io import write_vrp, read_solution, read_vrp
+from utils.vrp_io import write_vrp, read_solution, read_vrp
 
 
 class LKHSolver(VRPSolver):

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import distance_matrix
 
-from utils.visualize import plot_vrp
+from utils.visualize import plot_instance
 
 
 class VRPInstance:
@@ -45,10 +45,10 @@ class VRPInstance:
         adj[0, 0] = 5
         return adj
 
-    def plot(self, solution=None, ax=None, title=None):
+    def plot(self, ax=None, title=None):
         if ax is None:
             ax = plt.gca()
-        plot_vrp(ax, self, title, solution)
+        plot_instance(ax, self, title)
 
     def to_networkx(self):
         coords = [self.depot] + self.customers

@@ -3,7 +3,7 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 from environments import VRPSolver
 from instances import VRPSolution, VRPInstance
 from instances.vrp_solution import Route
-from utils.io import read_vrp, GRID_DIM
+from utils.vrp_io import read_vrp, GRID_DIM
 
 
 class OrToolsSolver(VRPSolver):

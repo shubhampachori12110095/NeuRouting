@@ -9,6 +9,7 @@ from environments import VRPEnvironment
 from instances import VRPInstance, VRPSolution, VRPNeuralSolution
 from nlns import DestroyProcedure, RepairProcedure, LNSOperator
 from nlns.initial import nearest_neighbor_solution
+from utils.visualize import record_gif
 
 EMA_ALPHA = 0.2  # Exponential Moving Average Alpha
 
@@ -46,6 +47,7 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         self.incumbent_solution = None
         self.neighborhood = None
         self.neighborhood_costs = None
+        self.history = None
 
     def reset(self, instance: VRPInstance, **args):
         super(LNSEnvironment, self).reset(instance)
@@ -53,8 +55,6 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
             self.solution = VRPNeuralSolution.from_solution(self.solution)
         self.incumbent_solution = self.solution
-        # self.instance.plot(self.solution, title="Initial")
-        # plt.show()
 
     def step(self) -> dict:
         current_cost = self.solution.cost()
@@ -82,10 +82,12 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
 
         return {"best_idx": best_idx, "cost": new_cost}
 
-    def solve(self, instance: VRPInstance, max_steps=None, time_limit=None) -> VRPSolution:
+    def solve(self, instance: VRPInstance, max_steps=None, time_limit=None, record=False) -> VRPSolution:
         self.reset(instance)
         self.max_steps = max_steps if max_steps is not None else self.max_steps
         self.time_limit = time_limit if time_limit is not None else self.time_limit
+        self.history = [] if record else None
+
         start_time = time.time()
         while self.n_steps < self.max_steps and time.time() - start_time < self.time_limit:
             # Create a envs of copies of the same solution that can be repaired in parallel
@@ -93,15 +95,22 @@ class LNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
             criteria = self.step()
 
             if criteria["cost"] < self.incumbent_solution.cost():
+                if record:
+                    self.history.append(deepcopy(self.incumbent_solution))
                 self.incumbent_solution = deepcopy(self.neighborhood[criteria["best_idx"]])
                 self.incumbent_solution.verify()
                 self.improvements += 1
-                # self.render()
 
             if self.acceptance_criteria(criteria):
                 self.solution = deepcopy(self.neighborhood[criteria["best_idx"]])
-                self.solution.verify()
+                # self.solution.verify()
+
         self.solution = self.incumbent_solution
+        if record:
+            self.history.append(deepcopy(self.incumbent_solution))
+            record_gif(self.history,
+                       file_name=f"{self.name.lower().replace(' ', '_')}_n{self.instance.n_customers}.gif")
+
         return self.solution
 
     def acceptance_criteria(self, criteria: dict) -> bool:

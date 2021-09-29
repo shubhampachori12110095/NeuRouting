@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from environments import VRPSolver
 from instances import VRPInstance, VRPSolution
 from instances.vrp_model_scip import VRPModelSCIP
-from utils.io import read_vrp
+from utils.vrp_io import read_vrp
 
 
 class SCIPSolver(VRPSolver):

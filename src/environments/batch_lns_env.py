@@ -25,7 +25,7 @@ class BatchLNSEnvironment(LargeNeighborhoodSearch, VRPEnvironment):
         self.costs = None
         self.n_steps = 0
 
-    def reset(self, instances: List[VRPInstance]):
+    def reset(self, instances: List[VRPInstance], **args):
         super(BatchLNSEnvironment, self).reset(instances)
         self.solution = [self.initial(inst) for inst in self.instance]
         if any([callable(getattr(op.repair, "_actor_model_forward", None)) for op in self.operators]):
