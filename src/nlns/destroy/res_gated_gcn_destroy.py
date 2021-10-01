@@ -90,14 +90,13 @@ class ResidualGatedGCNDestroy(NeuralProcedure, DestroyProcedure):
         self.multiple([solution])
 
     def load_model(self, ckpt_path: str):
-        print(self.device)
         ckpt = torch.load(ckpt_path, map_location=self.device)
         self.model.load_state_dict(ckpt["model_state_dict"])
         self.model.eval()
 
     def _init_train(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
-        self.lkh = LKHSolver("./executables/LKH3")
+        self.lkh = LKHSolver("./executables/LKH")
         self.n_samples = 0
         self.running_loss = 0.0
         self.running_preds_mean_cost = 0.0

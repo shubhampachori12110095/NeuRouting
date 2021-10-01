@@ -9,7 +9,7 @@ from utils.vrp_io import write_vrp, read_solution, read_vrp
 
 class LKHSolver(VRPSolver):
     def __init__(self, executable: str):
-        super().__init__("LKH3")
+        super().__init__("LKH")
         self.executable = executable
 
     def reset(self, instance: VRPInstance):
@@ -54,6 +54,6 @@ class LKHSolver(VRPSolver):
 
 if __name__ == "__main__":
     inst = read_vrp("../../res/A-n32-k5.vrp", grid_dim=100)
-    lkh_solver = LKHSolver("../../executables/LKH3")
+    lkh_solver = LKHSolver("../../executables/LKH")
     lkh_solver.solve(inst)
     lkh_solver.render()
