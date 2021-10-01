@@ -6,7 +6,7 @@
 #
 
 from instances import VRPSolution
-from experimental.neurewriter.manager import VRPManager, VRPNode
+from neurewriter.manager import VRPManager, VRPNode
 
 
 def parse_solution(solution: VRPSolution) -> VRPManager:

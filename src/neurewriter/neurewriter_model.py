@@ -14,9 +14,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
-from experimental.neurewriter.data_utils import np_to_tensor
-from experimental.neurewriter.modules import SeqLSTM, MLPModel
-from experimental.neurewriter.base_model import BaseModel
+from neurewriter.data_utils import np_to_tensor
+from neurewriter.modules import SeqLSTM, MLPModel
+from neurewriter.base_model import BaseModel
 
 eps = 1e-3
 log_eps = np.log(eps)

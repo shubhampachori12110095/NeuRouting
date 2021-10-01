@@ -8,7 +8,7 @@
 import numpy as np
 import torch.nn as nn
 
-from experimental.neurewriter.data_utils import np_to_tensor
+from neurewriter.data_utils import np_to_tensor
 
 
 class SeqLSTM(nn.Module):

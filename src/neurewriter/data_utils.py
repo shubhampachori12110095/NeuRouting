@@ -10,7 +10,7 @@ import torch
 
 from torch.autograd import Variable
 
-from experimental.neurewriter.parser import parse_solution
+from neurewriter.parser import parse_solution
 
 _PAD = b"_PAD"
 
