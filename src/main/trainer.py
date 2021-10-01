@@ -30,7 +30,7 @@ class Trainer:
         self.logger = logger
 
     def train(self, model_name: str, opposite_name: str, epochs: int, batch_size: int, destroy_percentage: float,
-                        log_interval: Optional[int] = None, val_interval: Optional[int] = None):
+              log_interval: Optional[int] = None, val_interval: Optional[int] = None):
         neural_proc, model, _ = get_neural_procedure(model_name, opposite_name, destroy_percentage, self.ckpt_path)
         if model_name in destroy_procedures.keys():
             neural_proc = neural_proc(model, destroy_percentage, device=self.device, logger=self.logger)

@@ -112,7 +112,7 @@ class VRPSolution:
                 f"Tour {i} with a total of {load} exceeds the maximum capacity of {self.instance.capacity}."
         # Each tour starts and ends at the depot
         for i, route in enumerate(self.routes):
-            assert route[0] == route[-1] == 0, \
+            assert route[0] == route[-1] == 0 and len(route) > 2, \
                 f"Route {i} is incomplete because it starts at {route[0]} and ends at {route[-1]}."
         # All customers have been visited
         missing = self.missing_customers()

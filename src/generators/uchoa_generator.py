@@ -1,8 +1,6 @@
 import torch
 import math
 
-from matplotlib import pyplot as plt
-
 from instances import VRPInstance
 
 GRID_SIZE = 1000
