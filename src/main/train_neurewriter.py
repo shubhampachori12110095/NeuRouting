@@ -12,7 +12,7 @@ from neurewriter.neurewriter_model import NeuRewriterModel
 from neurewriter.supervisor import VRPSupervisor
 from generators import generate_multiple_instances
 from nlns.initial import nearest_neighbor_solution
-from utils.logging import ConsoleLogger
+from utils.logging import ConsoleLogger, MultipleLogger, WandBLogger
 
 parser = argparse.ArgumentParser(description="NeuRewriter")
 parser.add_argument('--cpu', action='store_true', default=False)
@@ -56,7 +56,7 @@ train_group.add_argument('--lr_decay_rate', type=float, default=0.9)
 train_group.add_argument('--gradient_clip', type=float, default=5.0)
 train_group.add_argument('-e', '--epochs', type=int, default=10)
 train_group.add_argument('--dropout_rate', type=float, default=0.0)
-train_group.add_argument('-li', '--log_interval', type=int, required=False)
+train_group.add_argument('-log', '--log_interval', type=int, required=False)
 
 args = parser.parse_args()
 
@@ -80,10 +80,10 @@ if __name__ == "__main__":
     device = "cuda:0" if args.cuda else "cpu"
     print(f"Using {device} for training.")
 
-    # logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
-    logger = ConsoleLogger()
+    logger = MultipleLogger(loggers=[ConsoleLogger(), WandBLogger()])
+    # logger = ConsoleLogger()
     run_name = f"model_neurewriter_n{args.n_customers}"
-    logger.new_run(run_name=run_name[:run_name.rfind('.')])
+    logger.new_run(run_name=run_name)
 
     train_instances = generate_multiple_instances(n_instances=args.train_samples,
                                                   n_customers=args.n_customers,
@@ -113,10 +113,11 @@ if __name__ == "__main__":
             losses.append(train_loss)
             rewards.append(train_reward)
 
-            if (batch_idx + 1) % args.log_interval == 0:
+            batch_iter = batch_idx // args.batch_size + 1
+            if batch_iter % args.log_interval == 0:
                 logger.log({
                     "epoch": epoch + 1,
-                    "batch_idx": batch_idx // args.batch_size + 1,
+                    "batch_idx": batch_iter,
                     "loss": np.mean(losses),
                     "mean_reward": np.mean(rewards)
                 }, phase="train")
