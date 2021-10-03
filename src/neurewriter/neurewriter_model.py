@@ -22,61 +22,37 @@ eps = 1e-3
 log_eps = np.log(eps)
 
 
-class RegionPickerModel(BaseModel):
+class NeuRewriterModel(BaseModel):
+    """
+    Model architecture for vehicle routing.
+    """
+
     def __init__(self, args):
-        super(RegionPickerModel, self).__init__(args)
-        self.input_encoder = SeqLSTM(args)
-        self.value_estimator = MLPModel(self.num_MLP_layers, self.LSTM_hidden_size * 4, self.MLP_hidden_size, 1,
-                                        self.cuda_flag, self.dropout_rate)
-
-    def forward(self, dm_list, eval_flag=False):
-        torch.set_grad_enabled(not eval_flag)
-
-        batch_size = len(dm_list)
-        dm_list = self.input_encoder.calc_embedding(dm_list, eval_flag)
-
-        node_idxes = []
-        node_states = []
-        depot_states = []
-        for dm_idx in range(batch_size):
-            dm = dm_list[dm_idx]
-            for i in range(1, len(dm.vehicle_state) - 1):
-                node_idxes.append((dm_idx, i))
-                node_states.append(dm.encoder_outputs[i].unsqueeze(0))
-                depot_states.append(dm.encoder_outputs[0].clone().unsqueeze(0))
-
-        pred_rewards = []
-        for st in range(0, len(node_idxes), self.batch_size):
-            cur_node_states = node_states[st: st + self.batch_size]
-            cur_node_states = torch.cat(cur_node_states, 0)
-            cur_depot_states = depot_states[st: st + self.batch_size]
-            cur_depot_states = torch.cat(cur_depot_states, 0)
-            cur_pred_rewards = self.value_estimator(torch.cat([cur_node_states, cur_depot_states], dim=1))
-            pred_rewards.append(cur_pred_rewards)
-        pred_rewards = torch.cat(pred_rewards, 0)
-
-        candidate_rewrite_pos = [[] for _ in range(batch_size)]
-        for idx, (dm_idx, node_idx) in enumerate(node_idxes):
-            candidate_rewrite_pos[dm_idx].append((pred_rewards[idx].data[0], pred_rewards[idx], node_idx))
-
-        return dm_list, candidate_rewrite_pos
-
-
-class RulePickerModel(BaseModel):
-    def __init__(self, args):
-        super(RulePickerModel, self).__init__(args)
+        super(NeuRewriterModel, self).__init__(args)
         self.embedding_size = args.embedding_size
         self.attention_size = args.attention_size
         self.sqrt_attention_size = int(np.sqrt(self.attention_size))
         self.reward_thres = -0.01
-
+        self.input_encoder = SeqLSTM(args)
         self.policy_embedding = MLPModel(self.num_MLP_layers, self.LSTM_hidden_size * 6 + self.embedding_size * 2,
                                          self.MLP_hidden_size, self.attention_size, self.cuda_flag,
                                          self.dropout_rate)
         self.policy = MLPModel(self.num_MLP_layers, self.LSTM_hidden_size * 4, self.MLP_hidden_size,
                                self.attention_size, self.cuda_flag, self.dropout_rate)
+        self.value_estimator = MLPModel(self.num_MLP_layers, self.LSTM_hidden_size * 4, self.MLP_hidden_size, 1,
+                                        self.cuda_flag, self.dropout_rate)
+
+        if args.optimizer == 'adam':
+            self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        elif args.optimizer == 'sgd':
+            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
+        elif args.optimizer == 'rmsprop':
+            self.optimizer = optim.RMSprop(self.parameters(), lr=self.lr)
+        else:
+            raise ValueError('optimizer undefined: ', args.optimizer)
 
     def rewrite(self, dm, trace_rec, candidate_rewrite_pos, eval_flag, max_search_pos, reward_thres=None):
+
         candidate_rewrite_pos.sort(reverse=True, key=operator.itemgetter(0))
         if not eval_flag:
             sample_exp_reward_tensor = []
@@ -84,9 +60,12 @@ class RulePickerModel(BaseModel):
                 sample_exp_reward_tensor.append(cur_pred_reward_tensor)
             sample_exp_reward_tensor = torch.cat(sample_exp_reward_tensor, 0)
             sample_exp_reward_tensor = torch.exp(sample_exp_reward_tensor * 10)
+            sample_exp_reward = sample_exp_reward_tensor.data.cpu()
 
         candidate_dm = []
         candidate_rewrite_rec = []
+        candidate_trace_rec = []
+        candidate_scores = []
 
         if not eval_flag:
             sample_rewrite_pos_dist = Categorical(sample_exp_reward_tensor)
@@ -164,6 +143,7 @@ class RulePickerModel(BaseModel):
             ac_logits = torch.matmul(cur_state_key, torch.transpose(ctx_embeddings, 0, 1)) / self.sqrt_attention_size
             ac_logprobs = nn.LogSoftmax(dim=1)(ac_logits)
             ac_probs = nn.Softmax(dim=1)(ac_logits)
+            ac_logits = ac_logits.squeeze(0)
             ac_logprobs = ac_logprobs.squeeze(0)
             ac_probs = ac_probs.squeeze(0)
             if eval_flag:
@@ -179,7 +159,7 @@ class RulePickerModel(BaseModel):
 
             for i in candidate_acs:
                 neighbor_idx = candidate_neighbor_idxes[i]
-                new_dm = self.move(dm, rewrite_pos, neighbor_idx)
+                new_dm = move(dm, rewrite_pos, neighbor_idx)
                 if new_dm.tot_dis[-1] in trace_rec:
                     continue
                 candidate_dm.append(new_dm)
@@ -190,60 +170,15 @@ class RulePickerModel(BaseModel):
 
         return candidate_dm, candidate_rewrite_rec
 
-    def forward(self, dm_list, trace_rec, candidate_rewrite_pos, eval_flag=False):
-        torch.set_grad_enabled(not eval_flag)
+    def batch_rewrite(self, dm, trace_rec, candidate_rewrite_pos, eval_flag, max_search_pos, reward_thres):
         candidate_dm = []
         candidate_rewrite_rec = []
-        for i in range(len(dm_list)):
-            cur_candidate_dm, cur_candidate_rewrite_rec = self.rewrite(dm_list[i], trace_rec[i],
-                                                                       candidate_rewrite_pos[i], eval_flag,
-                                                                       max_search_pos=1, reward_thres=self.reward_thres)
+        for i in range(len(dm)):
+            cur_candidate_dm, cur_candidate_rewrite_rec = self.rewrite(dm[i], trace_rec[i], candidate_rewrite_pos[i],
+                                                                       eval_flag, max_search_pos, reward_thres)
             candidate_dm.append(cur_candidate_dm)
             candidate_rewrite_rec.append(cur_candidate_rewrite_rec)
         return candidate_dm, candidate_rewrite_rec
-
-    @staticmethod
-    def move(dm, cur_route_idx, neighbor_route_idx):
-        min_update_idx = min(cur_route_idx, neighbor_route_idx)
-        res = dm.clone()
-        old_vehicle_state = res.vehicle_state[:]
-        old_vehicle_state[cur_route_idx], old_vehicle_state[neighbor_route_idx] = old_vehicle_state[neighbor_route_idx], \
-                                                                                  old_vehicle_state[cur_route_idx]
-        if old_vehicle_state[neighbor_route_idx][0] == 0:
-            del old_vehicle_state[neighbor_route_idx]
-        res.vehicle_state = res.vehicle_state[:min_update_idx]
-        res.route = res.route[:min_update_idx]
-        res.tot_dis = res.tot_dis[:min_update_idx]
-        cur_node_idx, cur_capacity = res.vehicle_state[-1]
-        for t in range(min_update_idx, len(old_vehicle_state)):
-            new_node_idx, new_capacity = old_vehicle_state[t]
-            new_node = res.get_node(new_node_idx)
-            if new_node_idx != 0 and cur_capacity < new_node.demand:
-                res.add_route_node(0)
-            res.add_route_node(new_node_idx)
-            cur_capacity = res.vehicle_state[-1][1]
-        return res
-
-
-class NeuRewriterModel(BaseModel):
-    """
-    Model architecture for vehicle routing.
-    """
-
-    def __init__(self, args):
-        super(NeuRewriterModel, self).__init__(args)
-
-        self.region_picker = RegionPickerModel(args)
-        self.rule_picker = RulePickerModel(args)
-
-        if args.optimizer == 'adam':
-            self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
-        elif args.optimizer == 'sgd':
-            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
-        elif args.optimizer == 'rmsprop':
-            self.optimizer = optim.RMSprop(self.parameters(), lr=self.lr)
-        else:
-            raise ValueError('optimizer undefined: ', args.optimizer)
 
     def forward(self, batch_data, eval_flag=False):
         torch.set_grad_enabled(not eval_flag)
@@ -251,22 +186,47 @@ class NeuRewriterModel(BaseModel):
         batch_size = len(batch_data)
         for dm in batch_data:
             dm_list.append(dm)
+        dm_list = self.input_encoder.calc_embedding(dm_list, eval_flag)
 
         active = True
         reduce_steps = 0
-        dm_rec = [[] for _ in range(batch_size)]
+
         trace_rec = [{} for _ in range(batch_size)]
         rewrite_rec = [[] for _ in range(batch_size)]
+        dm_rec = [[] for _ in range(batch_size)]
 
         for idx in range(batch_size):
             dm_rec[idx].append(dm_list[idx])
             trace_rec[idx][dm_list[idx].tot_dis[-1]] = 0
 
         while active and (self.max_reduce_steps is None or reduce_steps < self.max_reduce_steps):
-            reduce_steps += 1
-            dm, candidate_rewrite_pos = self.region_picker(dm_list, eval_flag)
-            candidate_dm, candidate_rewrite_rec = self.rule_picker(dm, trace_rec, candidate_rewrite_pos, eval_flag)
             active = False
+            reduce_steps += 1
+            node_idxes = []
+            node_states = []
+            depot_states = []
+            for dm_idx in range(batch_size):
+                dm = dm_list[dm_idx]
+                for i in range(1, len(dm.vehicle_state) - 1):
+                    node_idxes.append((dm_idx, i))
+                    node_states.append(dm.encoder_outputs[i].unsqueeze(0))
+                    depot_states.append(dm.encoder_outputs[0].clone().unsqueeze(0))
+            pred_rewards = []
+            for st in range(0, len(node_idxes), self.batch_size):
+                cur_node_states = node_states[st: st + self.batch_size]
+                cur_node_states = torch.cat(cur_node_states, 0)
+                cur_depot_states = depot_states[st: st + self.batch_size]
+                cur_depot_states = torch.cat(cur_depot_states, 0)
+                cur_pred_rewards = self.value_estimator(torch.cat([cur_node_states, cur_depot_states], dim=1))
+                pred_rewards.append(cur_pred_rewards)
+            pred_rewards = torch.cat(pred_rewards, 0)
+            candidate_rewrite_pos = [[] for _ in range(batch_size)]
+            for idx, (dm_idx, node_idx) in enumerate(node_idxes):
+                candidate_rewrite_pos[dm_idx].append((pred_rewards[idx].data[0], pred_rewards[idx], node_idx))
+
+            candidate_dm, candidate_rewrite_rec = self.batch_rewrite(dm_list, trace_rec, candidate_rewrite_pos,
+                                                                     eval_flag, max_search_pos=1,
+                                                                     reward_thres=self.reward_thres)
             for dm_idx in range(batch_size):
                 cur_candidate_dm = candidate_dm[dm_idx]
                 cur_candidate_rewrite_rec = candidate_rewrite_rec[dm_idx]
@@ -279,7 +239,8 @@ class NeuRewriterModel(BaseModel):
                     trace_rec[dm_idx][cur_dm.tot_dis[-1]] = 0
             if not active:
                 break
-            updated_dm = self.region_picker.input_encoder.calc_embedding(dm_list, eval_flag)
+
+            updated_dm = self.input_encoder.calc_embedding(dm_list, eval_flag)
             for i in range(batch_size):
                 if updated_dm[i].tot_dis[-1] != dm_rec[i][-1].tot_dis[-1]:
                     dm_rec[i].append(updated_dm[i])
@@ -296,8 +257,8 @@ class NeuRewriterModel(BaseModel):
                 pred_dis.append(dm.tot_dis[-1])
             best_reward = pred_dis[0]
 
-            for idx, (ac_logprob, pred_reward, cur_pred_reward_tensor, rewrite_pos, applied_op, new_dis) \
-                    in enumerate(rewrite_rec[dm_idx]):
+            for idx, (ac_logprob, pred_reward, cur_pred_reward_tensor, rewrite_pos, applied_op, new_dis) in enumerate(
+                    rewrite_rec[dm_idx]):
                 cur_reward = pred_dis[idx] - pred_dis[idx + 1]
                 best_reward = min(best_reward, pred_dis[idx + 1])
 
@@ -325,10 +286,32 @@ class NeuRewriterModel(BaseModel):
             value_target_rec = torch.cat(value_target_rec, 0)
             pred_value_rec = pred_value_rec.unsqueeze(1)
             value_target_rec = value_target_rec.unsqueeze(1)
-            total_value_loss = F.smooth_l1_loss(pred_value_rec, value_target_rec, reduction='sum')
+            total_value_loss = F.smooth_l1_loss(pred_value_rec, value_target_rec, reduction="sum")
         total_policy_loss /= batch_size
         total_value_loss /= batch_size
         total_loss = total_policy_loss * self.value_loss_coef + total_value_loss
         total_reward = total_reward * 1.0 / batch_size
 
         return total_loss, total_reward, dm_rec
+
+
+def move(dm, cur_route_idx, neighbor_route_idx):
+    min_update_idx = min(cur_route_idx, neighbor_route_idx)
+    res = dm.clone()
+    old_vehicle_state = res.vehicle_state[:]
+    old_vehicle_state[cur_route_idx], old_vehicle_state[neighbor_route_idx] = old_vehicle_state[neighbor_route_idx], \
+                                                                              old_vehicle_state[cur_route_idx]
+    if old_vehicle_state[neighbor_route_idx][0] == 0:
+        del old_vehicle_state[neighbor_route_idx]
+    res.vehicle_state = res.vehicle_state[:min_update_idx]
+    res.route = res.route[:min_update_idx]
+    res.tot_dis = res.tot_dis[:min_update_idx]
+    cur_node_idx, cur_capacity = res.vehicle_state[-1]
+    for t in range(min_update_idx, len(old_vehicle_state)):
+        new_node_idx, new_capacity = old_vehicle_state[t]
+        new_node = res.get_node(new_node_idx)
+        if new_node_idx != 0 and cur_capacity < new_node.demand:
+            res.add_route_node(0)
+        res.add_route_node(new_node_idx)
+        cur_capacity = res.vehicle_state[-1][1]
+    return res

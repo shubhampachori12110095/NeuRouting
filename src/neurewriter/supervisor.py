@@ -35,8 +35,7 @@ class Supervisor(object):
         os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
         torch.save({
             "parameters": self.model.state_dict(),
-            "region_picker": self.model.region_picker.state_dict(),
-            "rule_picker": self.model.rule_picker.state_dict()
+            "optimizer": self.model.optimizer.state_dict()
         }, ckpt_path + ckpt_name)
 
 

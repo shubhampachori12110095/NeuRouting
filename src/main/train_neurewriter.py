@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description="NeuRewriter")
 parser.add_argument('--cpu', action='store_true', default=False)
 parser.add_argument('--eval', action='store_true', default=False)
 parser.add_argument('-n', '--n_customers', type=int, required=True)
-parser.add_argument('-ts', '--train_samples', type=int, default=100000)
+parser.add_argument('-ts', '--train_samples', type=int, default=10000)
 parser.add_argument('-vs', '--val_samples', type=int, default=100)
 parser.add_argument('-dist', '--distribution', type=str, default="nazari")
 parser.add_argument('--processes', type=int, default=1)
@@ -119,7 +119,8 @@ if __name__ == "__main__":
                     "epoch": epoch + 1,
                     "batch_idx": batch_iter,
                     "loss": np.mean(losses),
-                    "mean_reward": np.mean(rewards)
+                    "mean_reward": np.mean(rewards),
+                    "lr": model_supervisor.model.lr
                 }, phase="train")
                 rewards = losses = []
 
